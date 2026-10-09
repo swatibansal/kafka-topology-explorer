@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: catalog-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+app:
+  kafka:
+    topics:
+      product-updated: catalog.product.updated

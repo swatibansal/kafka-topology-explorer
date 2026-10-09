@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: notification-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service-cg
+app:
+  kafka:
+    topics:
+      order-created: orders.order.created
+      payment-failed: payments.payment.failed
+      shipment-delivered: shipping.shipment.delivered
+      email-requested: notifications.email.requested

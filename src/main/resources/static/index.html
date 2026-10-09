@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kafka Topology Explorer</title>
+  <script src="cytoscape.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 0.875rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: 0.02em; }
+    header h1 span { color: #4ecdc4; }
+    .header-meta { margin-left: auto; font-size: 0.75rem; color: #aaa; white-space: nowrap; }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────── */
+    .toolbar {
+      background: #fff;
+      border-bottom: 1px solid #dde1e9;
+      padding: 0.625rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .stats { font-size: 0.8125rem; color: #666; margin-right: auto; min-width: 200px; }
+    .stats strong { color: #1a1a2e; }
+
+    input[type="text"] {
+      padding: 0.4rem 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.8125rem;
+      width: 260px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #4ecdc4; }
+
+    button {
+      padding: 0.4rem 0.875rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: #1a1a2e; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #16213e; }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-secondary { background: #e8eaed; color: #333; }
+    .btn-secondary:hover { background: #d8dadd; }
+    .btn-accent { background: #4ecdc4; color: #fff; }
+    .btn-accent:hover:not(:disabled) { background: #3dbdb4; }
+    .btn-accent:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Diagram panel ───────────────────────────────────────────────── */
+    .diagram-panel {
+      background: #fafafa;
+      border-right: 1px solid #dde1e9;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .diagram-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: #999;
+      font-size: 0.875rem;
+      pointer-events: none;
+      z-index: 10;
+      background: rgba(250, 250, 250, 0.92);
+    }
+    .diagram-state .icon { font-size: 2.5rem; }
+
+    #cy { position: absolute; inset: 0; }
+
+    /* ── Zoom controls overlay ───────────────────────────────────────── */
+    .cy-controls {
+      position: absolute;
+      bottom: 1rem;
+      left: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      z-index: 5;
+    }
+    .cy-btn {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      color: #444;
+      padding: 0;
+    }
+    .cy-btn:hover { background: #f0f0f0; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    .sidebar {
+      background: #f8f9fb;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .sidebar h2 {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #dde1e9;
+    }
+    .placeholder-text { font-size: 0.8125rem; color: #aaa; line-height: 1.5; }
+
+    /* ── Node info card ──────────────────────────────────────────────── */
+    .node-info-card {
+      background: #fff;
+      border: 1px solid #dde1e9;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      display: none;
+    }
+    .node-info-card.visible { display: block; }
+    .node-info-name { font-weight: 600; color: #1a1a2e; margin-bottom: 0.35rem; word-break: break-all; }
+    .node-info-meta { color: #666; font-size: 0.75rem; line-height: 1.6; }
+    .node-info-badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+
+    /* ── Trace result ────────────────────────────────────────────────── */
+    .meta-card {
+      background: #e8f4f8;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      display: grid;
+      gap: 0.3rem;
+    }
+    .meta-card .row { display: flex; gap: 0.5rem; }
+    .meta-card .label { color: #555; font-weight: 500; flex-shrink: 0; }
+    .meta-card .value { color: #1a1a2e; }
+
+    .path-card {
+      background: #fff;
+      border: 1px solid #dde1e9;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-size: 0.8rem;
+    }
+    .path-header {
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .hop-count { font-weight: 400; color: #aaa; font-size: 0.75rem; }
+    .path-steps { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+    .arrow { color: #ccc; font-size: 0.8rem; }
+
+    .node-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .node-chip:hover { opacity: 0.75; }
+    .node-chip.TOPIC           { background: #dbeafe; color: #1d4ed8; }
+    .node-chip.CONSUMER_GROUP  { background: #dcfce7; color: #166534; }
+    .node-chip.STREAMS_APP     { background: #f3e8ff; color: #6b21a8; }
+    .node-chip.APPLICATION     { background: #ffedd5; color: #9a3412; }
+
+    .cycle-badge {
+      background: #fee2e2; color: #991b1b;
+      border-radius: 3px; padding: 0.1rem 0.35rem;
+      font-size: 0.7rem; font-weight: 700;
+    }
+    .dest-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+
+    /* ── Feedback ────────────────────────────────────────────────────── */
+    .msg-error {
+      background: #fee2e2; color: #991b1b;
+      border-radius: 6px; padding: 0.6rem 0.875rem; font-size: 0.8125rem;
+    }
+    .msg-info {
+      background: #e0f2fe; color: #0c4a6e;
+      border-radius: 6px; padding: 0.6rem 0.875rem; font-size: 0.8125rem;
+    }
+
+    /* ── Spinner ─────────────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.65s linear infinite;
+      vertical-align: middle; margin-right: 0.3rem;
+    }
+    .spinner.dark { border-color: rgba(0,0,0,0.15); border-top-color: #333; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Legend ──────────────────────────────────────────────────────── */
+    .legend { font-size: 0.75rem; color: #888; display: flex; flex-direction: column; gap: 0.3rem; }
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+    .legend-edge { width: 20px; height: 0; flex-shrink: 0; border-top-width: 2px; border-top-style: solid; }
+
+    /* ── Topic hover tooltip ─────────────────────────────────────────────── */
+    .cy-tooltip {
+      position: absolute;
+      background: rgba(26, 26, 46, 0.93);
+      color: #fff;
+      border-radius: 5px;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.75rem;
+      line-height: 1.65;
+      pointer-events: none;
+      z-index: 20;
+      display: none;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .cy-tooltip .tt-label { color: #9bb5cc; margin-right: 0.3rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────── -->
+<header>
+  <h1>Kafka Topology <span>Explorer</span></h1>
+  <div class="header-meta" id="header-meta"></div>
+</header>
+
+<!-- ── Toolbar ───────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <div class="stats" id="stats"><span class="spinner dark"></span> Loading&hellip;</div>
+  <input
+    type="text" id="topic-input"
+    placeholder="Topic name or partial match&hellip;"
+    onkeydown="if(event.key==='Enter') traceTopic()"
+    autocomplete="off" spellcheck="false"
+  />
+  <button class="btn-accent"   id="trace-btn"   onclick="traceTopic()">Trace</button>
+  <button class="btn-secondary"                  onclick="clearTrace()">Clear</button>
+  <button class="btn-secondary"                  onclick="fitGraph()">Fit All</button>
+  <input
+    type="text" id="search-input"
+    placeholder="Search by app name&hellip;"
+    onkeydown="if(event.key==='Enter') searchNodes()"
+    autocomplete="off" spellcheck="false"
+  />
+  <button class="btn-secondary" id="search-btn" onclick="searchNodes()">Search</button>
+  <button class="btn-secondary"                 onclick="clearSearch()">Clear Search</button>
+  <button class="btn-primary"  id="refresh-btn" onclick="refreshTopology()">Refresh Topology</button>
+</div>
+
+<!-- ── Main area ─────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Diagram panel -->
+  <div class="diagram-panel" id="diagram-panel">
+    <div class="diagram-state" id="diagram-state">
+      <div class="icon">⏳</div>
+      <div id="diagram-state-text">Loading topology&hellip;</div>
+    </div>
+    <div id="cy"></div>
+    <div id="cy-tooltip" class="cy-tooltip"></div>
+    <!-- Zoom / layout controls -->
+    <div class="cy-controls">
+      <button class="cy-btn" title="Zoom in"      onclick="cy && cy.zoom({level: cy.zoom()*1.3, renderedPosition:{x:cy.width()/2,y:cy.height()/2}})">+</button>
+      <button class="cy-btn" title="Zoom out"     onclick="cy && cy.zoom({level: cy.zoom()/1.3, renderedPosition:{x:cy.width()/2,y:cy.height()/2}})">−</button>
+      <button class="cy-btn" title="Fit all"      onclick="fitGraph()">⊞</button>
+      <button class="cy-btn" title="Reset highlight" onclick="resetHighlight()" style="font-size:0.75rem;">✕</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Node info (shown on click) -->
+    <div id="node-info" class="node-info-card">
+      <div id="node-info-badge" class="node-info-badge"></div>
+      <div id="node-info-name" class="node-info-name"></div>
+      <div id="node-info-meta" class="node-info-meta"></div>
+    </div>
+
+    <!-- Search results (shown after a search query) -->
+    <div>
+      <h2>Search Results</h2>
+    </div>
+    <div id="search-placeholder" class="placeholder-text">
+      Enter an application name above and click <strong>Search</strong> to find matching nodes.
+    </div>
+    <div id="search-result" style="display:none;flex-direction:column;gap:0.5rem;"></div>
+
+    <div style="border-top:1px solid #dde1e9; padding-top:1rem;">
+      <h2>Trace Results</h2>
+    </div>
+    <div id="trace-placeholder" class="placeholder-text">
+      Enter a topic name (exact or partial) and click <strong>Trace</strong> to explore
+      every downstream path. Partial matches show candidates to choose from.
+    </div>
+    <div id="trace-result" style="display:none;flex-direction:column;gap:0.75rem;"></div>
+
+    <!-- Legend -->
+    <div style="margin-top:auto; padding-top:1rem; border-top:1px solid #dde1e9;">
+      <div style="font-size:0.75rem;font-weight:600;color:#888;margin-bottom:0.5rem;">NODE TYPES</div>
+      <div class="legend" style="margin-bottom:0.75rem;">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#1565C0;"></div>
+          <span><strong style="color:#1565C0;">Topic</strong></span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#2E7D32;"></div>
+          <span><strong style="color:#2E7D32;">Consumer Group</strong></span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#6A1B9A;transform:rotate(45deg);"></div>
+          <span><strong style="color:#6A1B9A;">Streams App</strong></span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#E65100;border-radius:50%;"></div>
+          <span><strong style="color:#E65100;">Application</strong></span>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;font-weight:600;color:#888;margin-bottom:0.5rem;">EDGE TYPES</div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-edge" style="border-color:#1565C0;"></div>
+          <span>CONSUMES</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-edge" style="border-color:#E65100;border-top-style:dashed;"></div>
+          <span>DEPLOYS</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-edge" style="border-color:#6A1B9A;border-top-style:dashed;"></div>
+          <span>PRODUCES</span>
+        </div>
+      </div>
+      <div style="font-size:0.7rem;color:#bbb;margin-top:0.75rem;line-height:1.5;">
+        Click a node to highlight its connections.<br>
+        Click a path chip to focus that node.<br>
+        Scroll to zoom &middot; drag to pan.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let cy = null;
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────
+  window.addEventListener('load', loadTopology);
+
+  async function loadTopology() {
+    setState('⏳', 'Loading topology data&hellip;');
+    setStats('<span class="spinner dark"></span> Loading&hellip;');
+    try {
+      const topo = await fetch('api/topology').then(r => r.json());
+      updateStats(topo);
+      renderGraph(topo);
+      updateHeaderMeta();
+    } catch (err) {
+      setState('⚠️', 'Failed to load: ' + escHtml(err.message));
+      setStats('—');
+    }
+  }
+
+  async function refreshTopology() {
+    const btn = document.getElementById('refresh-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Refreshing&hellip;';
+    try {
+      await fetch('api/topology/refresh');
+      await loadTopology();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Refresh Topology';
+    }
+  }
+
+  // ── Graph rendering ───────────────────────────────────────────────────
+  function renderGraph(topo) {
+    const nodeMap = topo.nodes || {};
+    const edges   = topo.edges  || [];
+
+    if (Object.keys(nodeMap).length === 0) {
+      setState('📭', 'No topology data yet.<br><small>Connect to a Kafka broker and click <strong>Refresh Topology</strong>.</small>');
+      return;
+    }
+
+    setState('⏳', 'Computing layout&hellip;');
+
+    if (cy) { cy.destroy(); cy = null; }
+
+    // Build elements
+    const elements = [];
+    for (const [id, node] of Object.entries(nodeMap)) {
+      elements.push({ data: { id, label: node.name, type: node.type, nodeData: node } });
+    }
+    edges.forEach((edge, i) => {
+      if (!nodeMap[edge.sourceId] || !nodeMap[edge.targetId]) return;
+      elements.push({
+        data: {
+          id: 'e' + i,
+          source: edge.sourceId,
+          target: edge.targetId,
+          type: edge.type
+        }
+      });
+    });
+
+    // Defer so "Computing layout…" renders before the blocking layout call
+    setTimeout(() => {
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements,
+        style: buildStyle(),
+        layout: {
+          name: 'cose',
+          animate: false,
+          randomize: true,
+          nodeRepulsion: () => 8192,
+          nodeOverlap: 12,
+          idealEdgeLength: () => 60,
+          edgeElasticity: () => 30,
+          gravity: 0.8,
+          numIter: 300,
+          coolingFactor: 0.95,
+          minTemp: 1.0
+        }
+      });
+
+      // Click node → highlight its neighbourhood
+      cy.on('tap', 'node', e => {
+        const node = e.target;
+        cy.elements().addClass('faded');
+        const hood = node.closedNeighborhood();
+        hood.removeClass('faded').addClass('highlighted');
+        showNodeInfo(node);
+      });
+
+      // Tap canvas background → reset
+      cy.on('tap', e => {
+        if (e.target === cy) {
+          resetHighlight();
+          hideNodeInfo();
+        }
+      });
+
+      // Hover on any node → show tooltip with full name + type-specific metadata
+      cy.on('mouseover', 'node', e => {
+        const d    = e.target.data();
+        const meta = (d.nodeData || {}).metadata || {};
+        const rows = [['Name', d.label]];
+
+        if (d.type === 'TOPIC') {
+          if (meta.partitions)        rows.push(['Partitions', meta.partitions]);
+          if (meta.replicationFactor) rows.push(['Replication', meta.replicationFactor]);
+          if (meta.messageCount)      rows.push(['Messages', formatCount(meta.messageCount)]);
+        } else if (d.type === 'APPLICATION') {
+          if (meta.namespace)         rows.push(['Namespace', meta.namespace]);
+          if (meta.candidateGroupIds) rows.push(['Unlinked groups', meta.candidateGroupIds]);
+        }
+
+        const tooltip = document.getElementById('cy-tooltip');
+        tooltip.innerHTML = rows.map(([l, v]) =>
+          '<div><span class="tt-label">' + escHtml(l) + ':</span> ' + escHtml(v) + '</div>'
+        ).join('');
+        tooltip.style.display = 'block';
+        positionTooltip(e.originalEvent);
+      });
+
+      cy.on('mousemove', 'node', e => {
+        if (document.getElementById('cy-tooltip').style.display === 'block') {
+          positionTooltip(e.originalEvent);
+        }
+      });
+
+      cy.on('mouseout', 'node', () => {
+        document.getElementById('cy-tooltip').style.display = 'none';
+      });
+
+      document.getElementById('diagram-state').style.display = 'none';
+    }, 40);
+  }
+
+  function buildStyle() {
+    return [
+      // ── Base node
+      {
+        selector: 'node',
+        style: {
+          label: 'data(label)',
+          'font-size': '9px',
+          'font-family': 'Helvetica, Arial, sans-serif',
+          color: '#fff',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'text-wrap': 'ellipsis',
+          'text-max-width': '90px',
+          width: 'label',
+          height: 'label',
+          padding: '5px',
+          'min-width': '36px',
+          'min-height': '18px',
+          'border-width': 0
+        }
+      },
+      // ── Node types
+      {
+        selector: 'node[type = "TOPIC"]',
+        style: { 'background-color': '#1565C0', shape: 'round-rectangle' }
+      },
+      {
+        selector: 'node[type = "CONSUMER_GROUP"]',
+        style: { 'background-color': '#2E7D32', shape: 'round-rectangle' }
+      },
+      {
+        selector: 'node[type = "STREAMS_APP"]',
+        style: { 'background-color': '#6A1B9A', shape: 'diamond', padding: '8px' }
+      },
+      {
+        selector: 'node[type = "APPLICATION"]',
+        style: {
+          'background-color': '#E65100',
+          shape: 'hexagon',
+          padding: '7px',
+          'font-weight': 'bold',
+          'font-size': '9px'
+        }
+      },
+      // ── Base edge
+      {
+        selector: 'edge',
+        style: {
+          width: 1.5,
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          opacity: 0.75
+        }
+      },
+      {
+        selector: 'edge[type = "CONSUMES"]',
+        style: { 'line-color': '#1565C0', 'target-arrow-color': '#1565C0' }
+      },
+      {
+        selector: 'edge[type = "DEPLOYS"]',
+        style: {
+          'line-color': '#E65100',
+          'target-arrow-color': '#E65100',
+          'line-style': 'dashed',
+          width: 2
+        }
+      },
+      {
+        selector: 'edge[type = "PRODUCES"]',
+        style: {
+          'line-color': '#6A1B9A',
+          'target-arrow-color': '#6A1B9A',
+          'line-style': 'dashed',
+          width: 1.5
+        }
+      },
+      // ── Faded / highlighted states
+      {
+        selector: '.faded',
+        style: { opacity: 0.08 }
+      },
+      {
+        selector: 'node.highlighted',
+        style: {
+          opacity: 1,
+          'border-width': 2,
+          'border-color': '#FFD600'
+        }
+      },
+      {
+        selector: 'edge.highlighted',
+        style: { opacity: 1, width: 2.5 }
+      },
+      {
+        selector: 'node.search-match',
+        style: {
+          opacity: 1,
+          'border-width': 3,
+          'border-color': '#F59E0B'
+        }
+      }
+    ];
+  }
+
+  // ── Node info panel ───────────────────────────────────────────────────
+  const TYPE_COLORS = {
+    TOPIC: '#1565C0', CONSUMER_GROUP: '#2E7D32',
+    STREAMS_APP: '#6A1B9A', APPLICATION: '#E65100'
+  };
+
+  function showNodeInfo(node) {
+    const d = node.data();
+    const card  = document.getElementById('node-info');
+    const badge = document.getElementById('node-info-badge');
+    const name  = document.getElementById('node-info-name');
+    const meta  = document.getElementById('node-info-meta');
+
+    badge.textContent = d.type;
+    badge.style.background = TYPE_COLORS[d.type] || '#888';
+    badge.style.color = '#fff';
+
+    name.textContent = d.label;
+
+    const nd = d.nodeData || {};
+    const metaParts = [];
+    if (nd.metadata) {
+      for (const [k, v] of Object.entries(nd.metadata)) {
+        metaParts.push('<strong>' + escHtml(k) + ':</strong> ' + escHtml(v));
+      }
+    }
+    // Count connected edges
+    const inDegree  = node.indegree(false);
+    const outDegree = node.outdegree(false);
+    metaParts.push('in: ' + inDegree + ' &nbsp; out: ' + outDegree);
+    meta.innerHTML = metaParts.join('<br>');
+
+    card.classList.add('visible');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function hideNodeInfo() {
+    document.getElementById('node-info').classList.remove('visible');
+  }
+
+  // ── Controls ──────────────────────────────────────────────────────────
+  function fitGraph() {
+    if (cy) cy.fit(undefined, 40);
+  }
+
+  function resetHighlight() {
+    if (cy) cy.elements().removeClass('faded highlighted');
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────
+  function updateStats(topo) {
+    const nodes = topo.nodes ? Object.keys(topo.nodes) : [];
+    const edges = topo.edges || [];
+    const byType = {};
+    nodes.forEach(id => {
+      const t = topo.nodes[id].type;
+      byType[t] = (byType[t] || 0) + 1;
+    });
+    const byEdge = {};
+    edges.forEach(e => { byEdge[e.type] = (byEdge[e.type] || 0) + 1; });
+
+    const parts = [
+      '<strong>' + nodes.length + '</strong> nodes',
+      '&nbsp;&middot;&nbsp;',
+      '<strong>' + edges.length + '</strong> edges'
+    ];
+    if (byType.TOPIC)          parts.push('&nbsp;&nbsp;<span style="color:#1565C0">&#9632;</span>&thinsp;' + byType.TOPIC + ' topics');
+    if (byType.CONSUMER_GROUP) parts.push('<span style="color:#2E7D32">&#9632;</span>&thinsp;' + byType.CONSUMER_GROUP + ' groups');
+    if (byType.APPLICATION)    parts.push('<span style="color:#E65100">&#9632;</span>&thinsp;' + byType.APPLICATION + ' apps');
+    if (byEdge.PRODUCES)       parts.push('<span style="color:#6A1B9A">&#8627;</span>&thinsp;' + byEdge.PRODUCES + ' produces');
+
+    document.getElementById('stats').innerHTML = parts.join(' ');
+  }
+
+  function setStats(html) {
+    document.getElementById('stats').innerHTML = html;
+  }
+
+  function updateHeaderMeta() {
+    document.getElementById('header-meta').textContent =
+      'Last refreshed ' + new Date().toLocaleTimeString();
+  }
+
+  // ── Trace ─────────────────────────────────────────────────────────────
+  async function traceTopic() {
+    const input = document.getElementById('topic-input');
+    const topic = input.value.trim();
+    if (!topic) { input.focus(); return; }
+
+    const btn         = document.getElementById('trace-btn');
+    const placeholder = document.getElementById('trace-placeholder');
+    const resultDiv   = document.getElementById('trace-result');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+    resultDiv.style.display = 'none';
+    placeholder.style.display = '';
+    placeholder.innerHTML = 'Tracing <strong>' + escHtml(topic) + '</strong>&hellip;';
+
+    try {
+      const res = await fetch('api/topology/trace?topic=' + encodeURIComponent(topic));
+
+      if (res.status === 404) {
+        placeholder.innerHTML =
+          '<div class="msg-error">Topic <strong>' + escHtml(topic) + '</strong> not found in the topology.' +
+          '<br><small>Try refreshing, or check the topic name.</small></div>';
+        return;
+      }
+      if (!res.ok) {
+        placeholder.innerHTML = '<div class="msg-error">Error ' + res.status + ': ' + escHtml(res.statusText) + '</div>';
+        return;
+      }
+
+      const data = await res.json();
+
+      // Ambiguous partial match — show candidates for selection
+      if (data.ambiguous) {
+        const cands = data.candidates || [];
+        let html = '<div class="msg-info">Multiple topics match <strong>' + escHtml(topic)
+                 + '</strong> — click one to trace:</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.5rem;">';
+        cands.forEach(c => {
+          html += '<span class="node-chip TOPIC" style="cursor:pointer;max-width:none" '
+                + 'onclick="selectAndTrace(' + escHtml(JSON.stringify(c)) + ')">' + escHtml(c) + '</span>';
+        });
+        html += '</div>';
+        placeholder.style.display = '';
+        placeholder.innerHTML = html;
+        return;
+      }
+
+      placeholder.style.display = 'none';
+      resultDiv.style.display = 'flex';
+      resultDiv.style.flexDirection = 'column';
+      resultDiv.style.gap = '0.75rem';
+      renderTraceResult(data, resultDiv);
+
+      // Highlight the traced path in the graph
+      if (cy) {
+        const nodeIds = new Set();
+        (data.paths || []).forEach(p => (p.nodes || []).forEach(n => nodeIds.add(n.id)));
+        cy.elements().addClass('faded');
+        cy.nodes().filter(n => nodeIds.has(n.id())).removeClass('faded').addClass('highlighted');
+        cy.edges().filter(e =>
+          nodeIds.has(e.source().id()) && nodeIds.has(e.target().id())
+        ).removeClass('faded').addClass('highlighted');
+      }
+    } catch (err) {
+      placeholder.innerHTML = '<div class="msg-error">Request failed: ' + escHtml(err.message) + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Trace';
+    }
+  }
+
+  function renderTraceResult(data, container) {
+    const destinations = data.finalDestinations || [];
+    const paths        = data.paths || [];
+    let html = '';
+
+    html += '<div class="meta-card">';
+    html += '<div class="row"><span class="label">Start topic</span><span class="value">' + escHtml(data.startTopic) + '</span></div>';
+    html += '<div class="row"><span class="label">Paths found</span><span class="value">' + data.pathCount + '</span></div>';
+    if (destinations.length) {
+      html += '<div class="row"><span class="label">Destinations</span>';
+      html += '<span class="value"><div class="dest-chips">' + destinations.map(d => chip(d, true)).join('') + '</div></span></div>';
+    }
+    html += '</div>';
+
+    if (paths.length === 0) {
+      html += '<div class="msg-info">No downstream paths found from this topic.</div>';
+    }
+
+    paths.forEach((path, i) => {
+      const hops  = (path.nodes || []).length - 1;
+      const cycle = path.cycleDetected;
+      html += '<div class="path-card"><div class="path-header">Path ' + (i + 1);
+      if (cycle) html += ' <span class="cycle-badge">CYCLE</span>';
+      html += ' <span class="hop-count">(' + hops + ' hop' + (hops !== 1 ? 's' : '') + ')</span></div>';
+      html += '<div class="path-steps">';
+      (path.nodes || []).forEach((node, j) => {
+        if (j > 0) html += '<span class="arrow">&#8594;</span>';
+        html += chip(node, true);
+      });
+      html += '</div></div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  function chip(node, clickable) {
+    const onclick = clickable ? ' onclick="focusNode(\'' + escHtml(node.id) + '\')"' : '';
+    return '<span class="node-chip ' + escHtml(node.type) + '" title="' + escHtml(node.id) + '"' + onclick + '>'
+      + escHtml(node.name) + '</span>';
+  }
+
+  function focusNode(nodeId) {
+    if (!cy) return;
+    const node = cy.nodes().filter(n => n.id() === nodeId);
+    if (!node.length) return;
+    cy.elements().addClass('faded');
+    const hood = node.closedNeighborhood();
+    hood.removeClass('faded').addClass('highlighted');
+    cy.animate({ fit: { eles: hood, padding: 100 } }, { duration: 400 });
+    showNodeInfo(node);
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────
+  async function searchNodes() {
+    const input = document.getElementById('search-input');
+    const q = input.value.trim();
+    if (!q) { input.focus(); return; }
+
+    const btn         = document.getElementById('search-btn');
+    const placeholder = document.getElementById('search-placeholder');
+    const resultDiv   = document.getElementById('search-result');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner dark"></span>';
+    resultDiv.style.display = 'none';
+    placeholder.style.display = '';
+    placeholder.innerHTML = 'Searching for <strong>' + escHtml(q) + '</strong>&hellip;';
+
+    try {
+      const res = await fetch('api/topology/search?q=' + encodeURIComponent(q));
+      if (!res.ok) {
+        placeholder.innerHTML =
+          '<div class="msg-error">Search failed: ' + res.status + ' ' + escHtml(res.statusText) + '</div>';
+        return;
+      }
+
+      const topo = await res.json();
+      const nodeEntries = Object.values(topo.nodes || {});
+
+      if (nodeEntries.length === 0) {
+        placeholder.innerHTML =
+          '<div class="msg-info">No nodes matched <strong>' + escHtml(q) + '</strong>.</div>';
+        return;
+      }
+
+      // Highlight matches (amber border) and neighbours (standard highlight) in graph
+      if (cy) {
+        resetHighlight();
+        cy.elements().addClass('faded');
+        const qLower = q.toLowerCase();
+        const allIds  = new Set(nodeEntries.map(n => n.id));
+        cy.nodes().filter(n => allIds.has(n.id())).removeClass('faded').addClass('highlighted');
+        cy.nodes().filter(n => allIds.has(n.id()) && n.data('label').toLowerCase().includes(qLower))
+          .addClass('search-match');
+        cy.edges().filter(e => allIds.has(e.source().id()) && allIds.has(e.target().id()))
+          .removeClass('faded').addClass('highlighted');
+      }
+
+      // Render result list — matched nodes first, then neighbours, alphabetically within each
+      const qLower = q.toLowerCase();
+      const matched   = nodeEntries.filter(n => n.name.toLowerCase().includes(qLower));
+      const neighbours = nodeEntries.filter(n => !n.name.toLowerCase().includes(qLower));
+      matched.sort((a, b) => a.name.localeCompare(b.name));
+      neighbours.sort((a, b) => a.name.localeCompare(b.name));
+
+      let html = '<div class="meta-card">';
+      html += '<div class="row"><span class="label">Matched</span>'
+            + '<span class="value">' + matched.length + ' node(s) for &ldquo;' + escHtml(q) + '&rdquo;</span></div>';
+      if (neighbours.length) {
+        html += '<div class="row"><span class="label">Neighbours</span>'
+              + '<span class="value">' + neighbours.length + ' connected node(s)</span></div>';
+      }
+      html += '</div>';
+
+      matched.forEach(n => {
+        html += '<div class="path-card" style="cursor:pointer" onclick="focusNode(\'' + escHtml(n.id) + '\')">'
+              + chip(n, false) + '</div>';
+      });
+      if (neighbours.length) {
+        html += '<div style="font-size:0.75rem;color:#aaa;margin-top:0.25rem;">Connected nodes</div>';
+        neighbours.forEach(n => {
+          html += '<div class="path-card" style="cursor:pointer;opacity:0.75" onclick="focusNode(\'' + escHtml(n.id) + '\')">'
+                + chip(n, false) + '</div>';
+        });
+      }
+
+      placeholder.style.display = 'none';
+      resultDiv.style.display = 'flex';
+      resultDiv.style.flexDirection = 'column';
+      resultDiv.style.gap = '0.5rem';
+      resultDiv.innerHTML = html;
+
+    } catch (err) {
+      placeholder.innerHTML = '<div class="msg-error">Request failed: ' + escHtml(err.message) + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search';
+    }
+  }
+
+  function clearSearch() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-result').style.display = 'none';
+    const ph = document.getElementById('search-placeholder');
+    ph.style.display = '';
+    ph.innerHTML = 'Enter an application name above and click <strong>Search</strong> to find matching nodes.';
+    if (cy) cy.nodes().removeClass('search-match');
+    resetHighlight();
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function selectAndTrace(topicName) {
+    document.getElementById('topic-input').value = topicName;
+    traceTopic();
+  }
+
+  function clearTrace() {
+    document.getElementById('topic-input').value = '';
+    document.getElementById('trace-result').style.display = 'none';
+    const ph = document.getElementById('trace-placeholder');
+    ph.style.display = '';
+    ph.innerHTML = 'Enter a topic name (exact or partial) and click <strong>Trace</strong> to explore every downstream path. Partial matches show candidates to choose from.';
+    resetHighlight();
+    hideNodeInfo();
+  }
+
+  function setState(icon, text) {
+    const el = document.getElementById('diagram-state');
+    el.style.display = '';
+    document.getElementById('diagram-state-text').innerHTML = text;
+    el.querySelector('.icon').textContent = icon;
+  }
+
+  function positionTooltip(mouseEvent) {
+    const tooltip = document.getElementById('cy-tooltip');
+    const panel   = document.getElementById('diagram-panel').getBoundingClientRect();
+    tooltip.style.left = (mouseEvent.clientX - panel.left + 14) + 'px';
+    tooltip.style.top  = (mouseEvent.clientY - panel.top  - 14) + 'px';
+  }
+
+  function formatCount(str) {
+    const n = parseInt(str, 10);
+    return isNaN(n) ? str : n.toLocaleString();
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+</script>
+</body>
+</html>

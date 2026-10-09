@@ -1,0 +1,17 @@
+target/
+.DS_Store
+*.class
+*.jar
+*.war
+*.iml
+.idea/
+.settings/
+.classpath
+.project
+*.log
+
+# Local Claude Code permissions (may contain tokens)
+.claude/settings.local.json
+
+# Demo runtime state
+.env

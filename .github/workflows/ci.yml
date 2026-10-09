@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Redaction scan self-test
+        run: scripts/check-redaction-selftest.sh
+
+      - name: Redaction check
+        run: scripts/check-redaction.sh
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and test (unit + EmbeddedKafka integration tests)
+        run: ./mvnw -B --no-transfer-progress verify

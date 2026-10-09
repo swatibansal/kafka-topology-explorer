@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: inventory-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: CHANGE_ME
+app:
+  kafka:
+    topics:
+      stock-reserved: inventory.stock.reserved
+      stock-released: inventory.stock.released
+---
+spring:
+  config:
+    activate:
+      on-profile: [prod]
+  kafka:
+    consumer:
+      group-id: inventory-service-cg
+app:
+  kafka:
+    topics:
+      stock-reserved: inventory.stock.reserved
+      stock-released: inventory.stock.released

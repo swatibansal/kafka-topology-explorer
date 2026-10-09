@@ -1,0 +1,22 @@
+# Acme Shop demo topology — topics. Format: <name> <partitions>
+# Naming convention: <domain>.<entity>.<event>
+orders.order.created 3
+orders.order.updated 3
+orders.order.cancelled 3
+orders.order.created.DLT 1
+payments.payment.requested 3
+payments.payment.captured 3
+payments.payment.failed 3
+payments.payment.requested.DLT 1
+inventory.stock.reserved 3
+inventory.stock.released 3
+shipping.shipment.created 3
+shipping.shipment.delivered 3
+notifications.email.requested 3
+catalog.product.updated 3
+search.product.indexed 3
+analytics.order.totals 3
+# Kafka Streams internal topics for the order-analytics application.
+# Their presence is what lets the explorer classify the group as a STREAMS_APP.
+order-analytics-order-totals-store-changelog 1
+order-analytics-KSTREAM-AGGREGATE-STATE-STORE-0000000003-repartition 3

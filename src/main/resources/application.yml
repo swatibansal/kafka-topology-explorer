@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: kafka-topology-explorer
+  # Disable Spring Boot's auto-configured consumer/producer factories.
+  # Only an explicit AdminClient bean is used in this service.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# ── Kafka connection ──────────────────────────────────────────────────────────
+# Defaults target the broker started by docker-compose.yml (host listener on 19092).
+# Every value can be overridden by the environment variable shown.
+kafka-agent:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+  security:
+    # PLAINTEXT | SSL | SASL_PLAINTEXT | SASL_SSL
+    protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+    # e.g. SCRAM-SHA-512 or PLAIN; leave blank for non-SASL protocols
+    sasl-mechanism: ${KAFKA_SASL_MECHANISM:}
+    # Either supply a full JAAS string ...
+    sasl-jaas-config: ${KAFKA_SASL_JAAS_CONFIG:}
+    # ... or a user name and password from which one is built. Never put literals here.
+    sasl-user-name: ${KAFKA_SASL_USERNAME:}
+    sasl-password: ${KAFKA_SASL_PASSWORD:}
+  admin:
+    request-timeout-ms: ${KAFKA_ADMIN_REQUEST_TIMEOUT_MS:30000}
+    default-api-timeout-ms: ${KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS:30000}
+  cache:
+    # Delay between successive background topology refreshes (milliseconds).
+    refresh-interval-ms: ${KAFKA_TOPOLOGY_REFRESH_MS:60000}
+  discovery:
+    # Topics whose names are purely numeric (auto-generated internal IDs) are always excluded.
+    exclude-numeric-topics: ${KAFKA_EXCLUDE_NUMERIC_TOPICS:true}
+    # Comma-separated, case-insensitive substrings; a topic is kept when its name contains any
+    # of them. Empty (the default) keeps every topic.
+    topic-include-patterns: ${KAFKA_TOPIC_FILTER:}
+
+  # ── Application enrichment ─────────────────────────────────────────────────
+  # Overlays APPLICATION nodes plus DEPLOYS / PRODUCES edges by reading each service's Spring
+  # application.yml. Two sources exist; GitHub wins when both are configured.
+  enrichment:
+    # Spring profile block to extract values from (spring.config.activate.on-profile).
+    active-profile: ${ENRICHMENT_ACTIVE_PROFILE:prod}
+    # Local source: a directory with one sub-directory per service containing application.yml.
+    # docker-compose.yml mounts ./demo/apps here. Blank disables the local source.
+    local-directory: ${ENRICHMENT_LOCAL_DIR:}
+  github:
+    # Remote source: fetch application.yml from each repo in a GitHub org via the Contents API.
+    enabled: ${GITHUB_ENRICHMENT_ENABLED:false}
+    org: ${GITHUB_ORG:}
+    token: ${GITHUB_TOKEN:}
+    # Comma-separated repository names (without the org prefix).
+    repos: ${GITHUB_REPOS:}
+
+# ── Actuator ─────────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      base-path: "/mgmt"
+      exposure:
+        include: health, info, prometheus
+  info:
+    java:
+      enabled: true
+  endpoint:
+    health:
+      enabled: true
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+
+# ── Server ───────────────────────────────────────────────────────────────────
+server:
+  servlet:
+    context-path: "/"
+  port: ${SERVER_PORT:8083}
+  shutdown: "graceful"
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  pattern:
+    dateformat: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z',GMT"

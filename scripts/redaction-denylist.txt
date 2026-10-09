@@ -1,0 +1,17 @@
+# One case-insensitive literal per line. Lines starting with # are comments.
+# Anything listed here must never appear in this repository.
+#
+# Only generic credential markers belong in this public list. Organisation-specific vocabulary
+# (company names, internal hostnames, vendor stacks) goes in a private list outside the
+# repository and is supplied through REDACTION_EXTRA_DENYLIST, so that the public list does not
+# itself disclose what it is protecting. See check-redaction.sh.
+ghp_
+gho_
+ghu_
+ghs_
+ghr_
+github_pat_
+xoxb-
+xoxp-
+-----BEGIN
+amazonaws

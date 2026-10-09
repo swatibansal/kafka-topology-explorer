@@ -1,0 +1,63 @@
+# Kafka Topology Explorer — local demo stack.
+#
+#   docker compose up            # Kafka + seeder + explorer, then open http://localhost:8083/
+#   docker compose up kafka seed # broker only (then run the explorer from Maven on the host)
+#
+# The broker exposes two listeners: kafka:9092 inside the compose network and
+# localhost:19092 for processes on the host.
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: kte-kafka
+    ports:
+      - "19092:19092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  seed:
+    image: apache/kafka:3.9.1
+    container_name: kte-seed
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./demo:/demo:ro
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    entrypoint: ["/bin/bash", "/demo/seed.sh"]
+
+  explorer:
+    build: .
+    image: kafka-topology-explorer:local
+    container_name: kte-explorer
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./demo/apps:/demo/apps:ro
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ENRICHMENT_LOCAL_DIR: /demo/apps
+      KAFKA_TOPOLOGY_REFRESH_MS: "60000"

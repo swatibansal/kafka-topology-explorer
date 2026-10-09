@@ -1,0 +1,10 @@
+# Acme Shop demo topology — consumer groups and the topics they commit offsets on.
+# Format: <group-id> <comma-separated topics>
+payment-service-cg orders.order.created,orders.order.cancelled
+inventory-service-cg orders.order.created,orders.order.cancelled,payments.payment.failed
+shipping-service-cg payments.payment.captured,inventory.stock.reserved
+notification-service-cg orders.order.created,payments.payment.failed,shipping.shipment.delivered,notifications.email.requested
+search-indexer-cg catalog.product.updated
+fraud-detection-cg payments.payment.requested,orders.order.created
+order-analytics orders.order.created,orders.order.updated,payments.payment.captured,order-analytics-KSTREAM-AGGREGATE-STATE-STORE-0000000003-repartition
+dlt-replay-cg orders.order.created.DLT,payments.payment.requested.DLT
