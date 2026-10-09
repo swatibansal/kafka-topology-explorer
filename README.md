@@ -8,6 +8,8 @@ without reading a hundred codebases.
 This repository is a self-contained demo. `docker compose up` starts a broker, seeds a fictional
 e-commerce topology ("Acme Shop"), and launches the explorer against it.
 
+![Kafka Topology Explorer showing the Acme Shop graph: topics, consumer groups, a Kafka Streams app and the services that deploy them](docs/images/topology-explorer.png)
+
 ## The problem
 
 Kafka exposes topics and consumer groups through the AdminClient, but:
@@ -44,6 +46,8 @@ What you will see:
 - **search** — type `payment` to see every node and edge touching payments;
 - **trace** — pick `orders.order.created` to list every consumer it reaches;
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
+
+![Tracing orders.order.created: the five downstream paths are highlighted in the graph and listed in the side panel](docs/images/topology-explorer-trace.png)
 
 Developer loop (broker in Docker, app from Maven, Java 21+):
 
