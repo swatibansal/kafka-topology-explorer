@@ -1,7 +1,7 @@
 # Stage 1: build the executable jar inside the image (no local Maven required).
 FROM eclipse-temurin:21-jdk-jammy AS build
 WORKDIR /workspace
-COPY pom.xml mvnw ./
+COPY pom.xml mvnw checkstyle-suppressions.xml ./
 COPY .mvn/ .mvn/
 RUN ./mvnw dependency:go-offline -q --no-transfer-progress
 COPY src/ src/

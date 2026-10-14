@@ -48,7 +48,7 @@ What you will see:
   those services produce in turn: 25 paths, the longest 14 hops deep;
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
 
-![Tracing orders.order.created: the downstream paths are highlighted in the graph and listed in the side panel](docs/images/topology-explorer-trace.png)
+![Tracing orders.order.created: 25 paths through the services and the topics they produce, highlighted in the graph and listed hop by hop in the side panel](docs/images/topology-explorer-trace.png)
 
 Developer loop (broker in Docker, app from Maven, Java 21+):
 
