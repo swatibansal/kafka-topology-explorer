@@ -113,10 +113,6 @@ class TopologyControllerTest {
   @Test
   void trace_partialTopicName_singleMatch_tracesResolvedTopic() throws Exception {
     var topicNode = TopologyNode.forTopic("orders.created");
-    var groupNode = TopologyNode.forConsumerGroup("order-service");
-    var path = new TracedPath(List.of(topicNode, groupNode), groupNode, false);
-    var result = new TraversalResult("orders.created", 1, List.of(path), List.of(groupNode));
-
     var graph = new TopologyGraph();
     graph.addNode(topicNode);
     given(cacheService.getTopology()).willReturn(graph);
@@ -124,6 +120,9 @@ class TopologyControllerTest {
     given(traversalService.trace(eq("orders"), any()))
         .willThrow(new IllegalArgumentException("not found"));
     // Resolved exact name traces successfully
+    var groupNode = TopologyNode.forConsumerGroup("order-service");
+    var path = new TracedPath(List.of(topicNode, groupNode), groupNode, false);
+    var result = new TraversalResult("orders.created", 1, List.of(path), List.of(groupNode));
     given(traversalService.trace(eq("orders.created"), any())).willReturn(result);
 
     mockMvc

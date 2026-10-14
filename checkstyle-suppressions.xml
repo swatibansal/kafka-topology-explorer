@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+  <!-- Integration tests follow the Maven Failsafe convention of an "IT" suffix, which the
+       Google abbreviation rule would otherwise reject. -->
+  <suppress checks="AbbreviationAsWordInName" files=".*IT\.java$"/>
+</suppressions>

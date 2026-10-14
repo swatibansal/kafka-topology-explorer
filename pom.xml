@@ -131,8 +131,12 @@
         <version>${checkstyle-plugin.version}</version>
         <configuration>
           <configLocation>google_checks.xml</configLocation>
+          <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
           <consoleOutput>true</consoleOutput>
-          <failsOnError>true</failsOnError>
+          <!-- google_checks.xml reports at severity "warning"; without lowering the threshold
+               failOnViolation never triggers and the build stays green with violations. -->
+          <violationSeverity>warning</violationSeverity>
+          <failOnViolation>true</failOnViolation>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
         </configuration>
         <executions>

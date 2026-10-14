@@ -105,7 +105,6 @@ class ApplicationEnrichmentServiceTest {
 
   @Test
   void enrich_multipleApps_allProcessed() {
-    var service = new ApplicationEnrichmentService(source, true);
     var graph = new TopologyGraph();
     graph.addNode(TopologyNode.forConsumerGroup("shipping-service-cg"));
     graph.addNode(TopologyNode.forConsumerGroup("search-indexer-cg"));
@@ -113,6 +112,7 @@ class ApplicationEnrichmentServiceTest {
         app("shipping-service", List.of("shipping-service-cg")),
         app("search-indexer", List.of("search-indexer-cg")),
         app("reporting", List.of("group-unknown"))));
+    var service = new ApplicationEnrichmentService(source, true);
 
     EnrichmentResult result = service.enrich(graph);
 
@@ -141,7 +141,6 @@ class ApplicationEnrichmentServiceTest {
 
   @Test
   void enrich_appWithGroupIds_topicConsumedByOwnGroup_noProducesEdge() {
-    var service = new ApplicationEnrichmentService(source, true);
     var graph = new TopologyGraph();
     graph.addNode(TopologyNode.forConsumerGroup("notification-service-cg"));
     graph.addNode(TopologyNode.forTopic("orders.order.created"));
@@ -153,6 +152,7 @@ class ApplicationEnrichmentServiceTest {
     given(source.fetchApplications()).willReturn(List.of(
         new DiscoveredApplication("notification-service", "",
             List.of("notification-service-cg"), List.of("orders.order.created"))));
+    var service = new ApplicationEnrichmentService(source, true);
 
     service.enrich(graph);
 
@@ -164,7 +164,6 @@ class ApplicationEnrichmentServiceTest {
 
   @Test
   void enrich_appWithGroupIds_andSeparateProducedTopic_addsDeploysAndProducesEdges() {
-    var service = new ApplicationEnrichmentService(source, true);
     var graph = new TopologyGraph();
     graph.addNode(TopologyNode.forConsumerGroup("payment-service-cg"));
     graph.addNode(TopologyNode.forTopic("orders.order.created"));
@@ -177,6 +176,7 @@ class ApplicationEnrichmentServiceTest {
     given(source.fetchApplications()).willReturn(List.of(
         new DiscoveredApplication("payment-service", "", List.of("payment-service-cg"),
             List.of("orders.order.created", "payments.payment.captured"))));
+    var service = new ApplicationEnrichmentService(source, true);
 
     service.enrich(graph);
 

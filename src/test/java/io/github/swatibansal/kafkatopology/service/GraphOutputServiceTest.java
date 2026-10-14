@@ -2,12 +2,12 @@ package io.github.swatibansal.kafkatopology.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.swatibansal.kafkatopology.model.EdgeType;
 import io.github.swatibansal.kafkatopology.model.ExportFormat;
 import io.github.swatibansal.kafkatopology.model.TopologyEdge;
 import io.github.swatibansal.kafkatopology.model.TopologyGraph;
 import io.github.swatibansal.kafkatopology.model.TopologyNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
