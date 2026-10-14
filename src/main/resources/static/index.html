@@ -43,6 +43,7 @@
       flex-wrap: wrap;
     }
     .stats { font-size: 0.8125rem; color: #666; margin-right: auto; min-width: 200px; }
+    .toggle { font-size: 0.8125rem; color: #666; display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; cursor: pointer; }
     .stats strong { color: #1a1a2e; }
 
     input[type="text"] {
@@ -298,6 +299,9 @@
   <button class="btn-accent"   id="trace-btn"   onclick="traceTopic()">Trace</button>
   <button class="btn-secondary"                  onclick="clearTrace()">Clear</button>
   <button class="btn-secondary"                  onclick="fitGraph()">Fit All</button>
+  <label class="toggle" title="Hide Kafka Streams changelog/repartition topics and retry/DLT topics">
+    <input type="checkbox" id="hide-internal" onchange="applyInternalFilter()"> Hide internal
+  </label>
   <input
     type="text" id="search-input"
     placeholder="Search by app name&hellip;"
@@ -427,8 +431,14 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Refreshing&hellip;';
     try {
-      await fetch('api/topology/refresh');
+      const res = await fetch('api/topology/refresh', { method: 'POST' });
+      if (!res.ok) {
+        setStats('<span style="color:#b91c1c">Refresh failed: HTTP ' + res.status + ' ' + escHtml(res.statusText) + '</span>');
+        return;
+      }
       await loadTopology();
+    } catch (err) {
+      setStats('<span style="color:#b91c1c">Refresh failed: ' + escHtml(err.message) + '</span>');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Refresh Topology';
@@ -451,9 +461,14 @@
 
     // Build elements
     const elements = [];
-    for (const [id, node] of Object.entries(nodeMap)) {
-      elements.push({ data: { id, label: node.name, type: node.type, nodeData: node } });
-    }
+    const rnd = seededRandom(LAYOUT_SEED);
+    Object.keys(nodeMap).sort().forEach(id => {
+      const node = nodeMap[id];
+      elements.push({
+        data: { id, label: node.name, type: node.type, nodeData: node },
+        position: { x: rnd() * LAYOUT_SEED_BOX.w, y: rnd() * LAYOUT_SEED_BOX.h }
+      });
+    });
     edges.forEach((edge, i) => {
       if (!nodeMap[edge.sourceId] || !nodeMap[edge.targetId]) return;
       elements.push({
@@ -475,17 +490,19 @@
         layout: {
           name: 'cose',
           animate: false,
-          randomize: true,
-          nodeRepulsion: () => 8192,
-          nodeOverlap: 12,
-          idealEdgeLength: () => 60,
+          randomize: false,
+          nodeRepulsion: () => 50000,
+          nodeOverlap: 16,
+          idealEdgeLength: () => 90,
           edgeElasticity: () => 30,
-          gravity: 0.8,
-          numIter: 300,
+          gravity: 0.3,
+          numIter: 500,
           coolingFactor: 0.95,
           minTemp: 1.0
         }
       });
+
+      applyInternalFilter();
 
       // Click node → highlight its neighbourhood
       cy.on('tap', 'node', e => {
@@ -541,6 +558,37 @@
     }, 40);
   }
 
+  // Deterministic starting positions: a fixed-seed pseudo-random scatter in node-id order, so the
+  // same topology always settles into the same layout instead of a different one on every load.
+  // (mulberry32 PRNG; the force layout below runs with randomize:false from these positions.)
+  function seededRandom(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const LAYOUT_SEED = 42;
+  const LAYOUT_SEED_BOX = { w: 1400, h: 900 };
+
+  // ── Internal-topic filter ─────────────────────────────────────────────
+  const INTERNAL_TOPIC = /-changelog$|-repartition$|\.dlt$|retry/i;
+  let hiddenInternal = null;
+
+  function isInternalTopic(node) {
+    return node.data('type') === 'TOPIC' && INTERNAL_TOPIC.test(node.data('label'));
+  }
+
+  function applyInternalFilter() {
+    if (!cy) return;
+    if (hiddenInternal) { hiddenInternal.restore(); hiddenInternal = null; }
+    if (document.getElementById('hide-internal').checked) {
+      hiddenInternal = cy.nodes().filter(isInternalTopic).remove();
+    }
+  }
+
   function buildStyle() {
     return [
       // ── Base node
@@ -548,18 +596,18 @@
         selector: 'node',
         style: {
           label: 'data(label)',
-          'font-size': '9px',
+          'font-size': '11px',
           'font-family': 'Helvetica, Arial, sans-serif',
           color: '#fff',
           'text-valign': 'center',
           'text-halign': 'center',
           'text-wrap': 'ellipsis',
-          'text-max-width': '90px',
+          'text-max-width': '150px',
           width: 'label',
           height: 'label',
           padding: '5px',
-          'min-width': '36px',
-          'min-height': '18px',
+          'min-width': '44px',
+          'min-height': '22px',
           'border-width': 0
         }
       },
@@ -583,7 +631,7 @@
           shape: 'hexagon',
           padding: '7px',
           'font-weight': 'bold',
-          'font-size': '9px'
+          'font-size': '11px'
         }
       },
       // ── Base edge
@@ -714,6 +762,7 @@
     ];
     if (byType.TOPIC)          parts.push('&nbsp;&nbsp;<span style="color:#1565C0">&#9632;</span>&thinsp;' + byType.TOPIC + ' topics');
     if (byType.CONSUMER_GROUP) parts.push('<span style="color:#2E7D32">&#9632;</span>&thinsp;' + byType.CONSUMER_GROUP + ' groups');
+    if (byType.STREAMS_APP)    parts.push('<span style="color:#6A1B9A">&#9670;</span>&thinsp;' + byType.STREAMS_APP + ' streams');
     if (byType.APPLICATION)    parts.push('<span style="color:#E65100">&#9632;</span>&thinsp;' + byType.APPLICATION + ' apps');
     if (byEdge.PRODUCES)       parts.push('<span style="color:#6A1B9A">&#8627;</span>&thinsp;' + byEdge.PRODUCES + ' produces');
 
@@ -837,7 +886,7 @@
   }
 
   function chip(node, clickable) {
-    const onclick = clickable ? ' onclick="focusNode(\'' + escHtml(node.id) + '\')"' : '';
+    const onclick = clickable ? ' onclick="focusNode(' + escHtml(JSON.stringify(node.id)) + ')"' : '';
     return '<span class="node-chip ' + escHtml(node.type) + '" title="' + escHtml(node.id) + '"' + onclick + '>'
       + escHtml(node.name) + '</span>';
   }
@@ -916,13 +965,13 @@
       html += '</div>';
 
       matched.forEach(n => {
-        html += '<div class="path-card" style="cursor:pointer" onclick="focusNode(\'' + escHtml(n.id) + '\')">'
+        html += '<div class="path-card" style="cursor:pointer" onclick="focusNode(' + escHtml(JSON.stringify(n.id)) + ')">'
               + chip(n, false) + '</div>';
       });
       if (neighbours.length) {
         html += '<div style="font-size:0.75rem;color:#aaa;margin-top:0.25rem;">Connected nodes</div>';
         neighbours.forEach(n => {
-          html += '<div class="path-card" style="cursor:pointer;opacity:0.75" onclick="focusNode(\'' + escHtml(n.id) + '\')">'
+          html += '<div class="path-card" style="cursor:pointer;opacity:0.75" onclick="focusNode(' + escHtml(JSON.stringify(n.id)) + ')">'
                 + chip(n, false) + '</div>';
         });
       }

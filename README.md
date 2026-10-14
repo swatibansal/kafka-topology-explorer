@@ -1,5 +1,7 @@
 # Kafka Topology Explorer
 
+[![CI](https://github.com/swatibansal/kafka-topology-explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/swatibansal/kafka-topology-explorer/actions/workflows/ci.yml)
+
 A Spring Boot service that discovers the full event topology of a Kafka platform and turns it
 into an interactive graph: every topic, consumer group, Kafka Streams application, and the
 microservices that deploy them. It answers *"who consumes this topic?"* and *"who produces here?"*
@@ -37,13 +39,16 @@ Then open <http://localhost:8083/>. The first start builds the image (a few minu
 `apache/kafka:3.9.1`. The image build downloads Maven and every dependency inside Docker, so the
 first `docker compose up` needs internet access. The broker is ephemeral by design:
 `docker compose down` discards the topology and the next `docker compose up` re-seeds it in about
-a minute.
+a minute. If port 8083 or 19092 is taken on your machine, set `EXPLORER_PORT` or `KAFKA_HOST_PORT`
+in the environment or in a `.env` file next to `docker-compose.yml`.
 
 What you will see:
 
 - the Acme Shop graph: 18 topics (two of them Kafka Streams internal topics), 7 consumer groups,
   1 Kafka Streams app, 9 services;
 - **search** — type `payment` to see every node and edge touching payments;
+- **hide internal topics** — tick the toolbar box to drop changelog, repartition, retry and
+  dead-letter topics from the picture;
 - **trace** — pick `orders.order.created` to follow it through every service and the topics
   those services produce in turn: 25 paths, the longest 14 hops deep;
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
@@ -111,7 +116,7 @@ Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md)
 | `GET /api/topology/search?q=<text>` | Nodes whose name contains `text`, plus neighbours |
 | `GET /api/topology/trace?topic=<name>` | All data-flow paths from a topic: topic → group → owning service → produced topic → … |
 | `GET /api/topology/export?format=mermaid\|dot\|json` | Graph export |
-| `GET /api/topology/refresh` | Force an immediate re-discovery |
+| `POST /api/topology/refresh` | Force an immediate re-discovery |
 | `GET /api/topology/applications` | Enrichment summary from the last refresh |
 | `GET /mgmt/health`, `GET /mgmt/prometheus` | Actuator health and metrics |
 
@@ -168,8 +173,9 @@ instance at several.
 
 Use `KAFKA_TOPIC_FILTER` to scope the graph to the topics that matter: a domain prefix, an
 environment prefix, or a team's naming convention. Patterns are substrings applied to topic and
-consumer-group names. Keep Kafka Streams internal topics (`-changelog`, `-repartition`) inside the
-filter, because their presence is what classifies a group as a `STREAMS_APP`.
+consumer-group names. Kafka Streams detection looks at every topic on the broker, so filtering
+out `-changelog` and `-repartition` topics from the graph does not stop a group being classified
+as a `STREAMS_APP`.
 
 ### 2. Connect it to your code host
 
@@ -213,7 +219,7 @@ from `/mgmt/prometheus`. Memory is sized through `JAVA_TOOL_OPTIONS` (`-XX:MaxRA
 is set in the image).
 
 The application has no authentication of its own. Put it behind your ingress and SSO, and do not
-expose `/mgmt` or `GET /api/topology/refresh` publicly: the health endpoint shows broker
+expose `/mgmt` or `POST /api/topology/refresh` publicly: the health endpoint shows broker
 connectivity details and the refresh endpoint triggers a full re-discovery on every call.
 
 ### 4. Manage configuration per environment

@@ -29,3 +29,6 @@ jobs:
 
       - name: Build and test (unit + EmbeddedKafka integration tests)
         run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Build Docker image
+        run: docker build -t kafka-topology-explorer:ci .

@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
  *       query (case-insensitive), plus their immediate neighbours
  *   <li>{@code GET /api/topology/trace?topic=<name>} — all paths from a topic to leaf nodes
  *   <li>{@code GET /api/topology/export?format=<fmt>} — graph in Mermaid, DOT, or JSON format
- *   <li>{@code GET /api/topology/refresh} — forces an immediate cache refresh
+ *   <li>{@code POST /api/topology/refresh} — forces an immediate cache refresh
  *   <li>{@code GET /api/topology/applications} — application enrichment result from the last
  *       refresh
  * </ul>
@@ -69,7 +70,7 @@ public class TopologyController {
 
   /**
    * Returns the full cached Kafka topology graph as JSON. To force a re-discovery first, call
-   * {@code GET /api/topology/refresh}.
+   * {@code POST /api/topology/refresh}.
    *
    * @return {@code 200 OK} with the topology graph
    */
@@ -229,7 +230,7 @@ public class TopologyController {
    *
    * @return {@code 200 OK} with the freshly discovered topology graph
    */
-  @GetMapping("/refresh")
+  @PostMapping("/refresh")
   public ResponseEntity<TopologyGraph> refresh() {
     log.info("Manual topology refresh requested");
     return ResponseEntity.ok(cacheService.refresh());

@@ -4,19 +4,20 @@
 #   docker compose up kafka seed # broker only (then run the explorer from Maven on the host)
 #
 # The broker exposes two listeners: kafka:9092 inside the compose network and
-# localhost:19092 for processes on the host.
+# localhost:19092 for processes on the host. If either host port is taken, set
+# KAFKA_HOST_PORT and/or EXPLORER_PORT in the environment or in a .env file next to this file.
 services:
   kafka:
     image: apache/kafka:3.9.1
     container_name: kte-kafka
     ports:
-      - "19092:19092"
+      - "${KAFKA_HOST_PORT:-19092}:${KAFKA_HOST_PORT:-19092}"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:19092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:${KAFKA_HOST_PORT:-19092}
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:${KAFKA_HOST_PORT:-19092}
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -54,7 +55,7 @@ services:
       seed:
         condition: service_completed_successfully
     ports:
-      - "8083:8083"
+      - "${EXPLORER_PORT:-8083}:8083"
     volumes:
       - ./demo/apps:/demo/apps:ro
     environment:

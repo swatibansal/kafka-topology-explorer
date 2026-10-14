@@ -58,7 +58,8 @@ Two sources feed the same parser: `LocalAppYmlSource` (a directory, used by the 
 ## Demo topology: Acme Shop
 
 Nine services, eighteen topics, eight groups. Seeded by `demo/seed.sh` using only the Kafka CLI:
-topics are created, a handful of JSON events are produced into each business topic, and committed
+topics are created, a realistic number of JSON events (a few hundred to a few thousand, listed per
+topic in `demo/topics.txt`) is produced into each business topic, and committed
 offsets are created for each group with `kafka-consumer-groups.sh --reset-offsets`, which works
 for groups with no live members.
 

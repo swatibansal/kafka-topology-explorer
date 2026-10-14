@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -209,18 +210,25 @@ class TopologyControllerTest {
         .andExpect(status().isBadRequest());
   }
 
-  // ── GET /api/topology/refresh ─────────────────────────────────────────────────
+  // ── POST /api/topology/refresh ────────────────────────────────────────────────
 
   @Test
-  void refresh_returnsRefreshedGraph() throws Exception {
+  void refresh_post_returnsRefreshedGraph() throws Exception {
     var refreshed = new TopologyGraph();
     refreshed.addNode(TopologyNode.forTopic("fresh-topic"));
     given(cacheService.refresh()).willReturn(refreshed);
 
     mockMvc
-        .perform(get("/api/topology/refresh"))
+        .perform(post("/api/topology/refresh"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.nodes['topic:fresh-topic'].name").value("fresh-topic"));
+  }
+
+  @Test
+  void refresh_get_isNotAllowed() throws Exception {
+    // Refresh triggers a full re-discovery, so it must not be reachable by a plain link or a
+    // browser prefetch.
+    mockMvc.perform(get("/api/topology/refresh")).andExpect(status().isMethodNotAllowed());
   }
 
   // ── GET /api/topology/applications ───────────────────────────────

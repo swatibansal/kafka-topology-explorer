@@ -13,6 +13,7 @@ set -euo pipefail
 BOOTSTRAP="${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
 BIN="${KAFKA_BIN:-/opt/kafka/bin}"
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Fallback for topics.txt lines without an explicit message count.
 MESSAGES_PER_TOPIC="${MESSAGES_PER_TOPIC:-12}"
 
 is_comment_or_blank() {
@@ -33,7 +34,7 @@ for attempt in $(seq 1 60); do
 done
 
 echo "Creating topics ..."
-while read -r topic partitions; do
+while read -r topic partitions messages _; do
   topic="${topic%$'\r'}"
   partitions="${partitions%$'\r'}"
   is_comment_or_blank "$topic" && continue
@@ -43,7 +44,7 @@ while read -r topic partitions; do
 done < "$DEMO_DIR/topics.txt"
 
 echo "Producing sample messages ..."
-while read -r topic partitions; do
+while read -r topic partitions messages _; do
   topic="${topic%$'\r'}"
   partitions="${partitions%$'\r'}"
   is_comment_or_blank "$topic" && continue
@@ -56,12 +57,14 @@ while read -r topic partitions; do
     echo "  skip    $topic already holds $existing message(s)"
     continue
   fi
-  for n in $(seq 1 "$MESSAGES_PER_TOPIC"); do
+  count="${messages%$'\r'}"
+  count="${count:-$MESSAGES_PER_TOPIC}"
+  for n in $(seq 1 "$count"); do
     printf '{"eventId":"%s-%04d","sequence":%d,"source":"acme-shop-demo-seeder"}\n' \
       "$topic" "$n" "$n"
   done | "$BIN/kafka-console-producer.sh" --bootstrap-server "$BOOTSTRAP" \
     --topic "$topic" >/dev/null
-  echo "  produce $topic <- $MESSAGES_PER_TOPIC message(s)"
+  echo "  produce $topic <- $count message(s)"
 done < "$DEMO_DIR/topics.txt"
 
 echo "Committing consumer-group offsets ..."

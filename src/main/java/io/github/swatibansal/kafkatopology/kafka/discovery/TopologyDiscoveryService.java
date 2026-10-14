@@ -99,7 +99,9 @@ public class TopologyDiscoveryService {
         .collect(Collectors.toList());
     Set<String> groupIds =
         filteredGroups.stream().map(ConsumerGroupListing::groupId).collect(Collectors.toSet());
-    Set<String> streamsApps = streamsAnalyzer.detectStreamsApps(groupIds, topics);
+    // Detection runs against every broker topic, not the filtered set: a filter that keeps only
+    // business topics must not stop a group's -changelog / -repartition topics identifying it.
+    Set<String> streamsApps = streamsAnalyzer.detectStreamsApps(groupIds, allTopics);
     log.info(
         "Discovered {} consumer group(s) ({} excluded by discovery filters),"
             + " {} identified as Kafka Streams app(s)",
