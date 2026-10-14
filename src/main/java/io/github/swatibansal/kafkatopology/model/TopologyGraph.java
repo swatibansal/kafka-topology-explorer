@@ -14,8 +14,17 @@ import java.util.Set;
  * Mutable in-memory representation of the Kafka topology discovered from a broker.
  *
  * <p>Nodes are keyed by their {@link TopologyNode#id()}. Edges are stored as a flat list and as
- * an adjacency map (source node ID → list of target node IDs) for O(1) neighbour lookup during
- * graph traversal.
+ * two adjacency maps for O(1) neighbour lookup:
+ *
+ * <ul>
+ *   <li><em>structural</em> (source node ID → target node IDs), exposed by {@link #neighbors},
+ *       which follows every edge in its stored direction;
+ *   <li><em>data flow</em> (node ID → nodes the data moves to next), exposed by
+ *       {@link #downstream}, which follows {@link EdgeType#CONSUMES} and
+ *       {@link EdgeType#PRODUCES} forwards but {@link EdgeType#DEPLOYS} in reverse, so that a
+ *       trace can step from a consumer group to the application that runs it and on to the
+ *       topics that application produces.
+ * </ul>
  *
  * <p><strong>Thread safety:</strong> this class is not thread-safe. Build on a single thread,
  * then share the read-only views returned by the getter methods.
@@ -25,6 +34,7 @@ public class TopologyGraph {
   private final Map<String, TopologyNode> nodes = new LinkedHashMap<>();
   private final List<TopologyEdge> edges = new ArrayList<>();
   private final Map<String, List<String>> adjacency = new LinkedHashMap<>();
+  private final Map<String, List<String>> flowAdjacency = new LinkedHashMap<>();
 
   /**
    * Adds a node. If a node with the same {@link TopologyNode#id()} already exists it is
@@ -44,9 +54,19 @@ public class TopologyGraph {
    */
   public void addEdge(TopologyEdge edge) {
     edges.add(edge);
+    indexEdge(edge);
+  }
+
+  /** Records {@code edge} in both adjacency maps. */
+  private void indexEdge(TopologyEdge edge) {
     adjacency
         .computeIfAbsent(edge.sourceId(), k -> new ArrayList<>())
         .add(edge.targetId());
+    // DEPLOYS is stored application → group, but data flows group → application.
+    boolean reversed = edge.type() == EdgeType.DEPLOYS;
+    String from = reversed ? edge.targetId() : edge.sourceId();
+    String to = reversed ? edge.sourceId() : edge.targetId();
+    flowAdjacency.computeIfAbsent(from, k -> new ArrayList<>()).add(to);
   }
 
   /**
@@ -77,6 +97,22 @@ public class TopologyGraph {
   public List<String> neighbors(String nodeId) {
     return Collections.unmodifiableList(
         adjacency.getOrDefault(nodeId, List.of()));
+  }
+
+  /**
+   * Returns the IDs of the nodes that data reaches next from {@code nodeId}: the consumer groups
+   * of a topic ({@link EdgeType#CONSUMES}), the application that runs a consumer group
+   * ({@link EdgeType#DEPLOYS}, followed in reverse) and the topics an application writes to
+   * ({@link EdgeType#PRODUCES}). An application is never stepped forwards into the other groups
+   * it deploys, because no message travels that way.
+   *
+   * @param nodeId node ID
+   * @return list of next node IDs in data-flow order; empty if the node is a sink or does not
+   *     exist
+   */
+  public List<String> downstream(String nodeId) {
+    return Collections.unmodifiableList(
+        flowAdjacency.getOrDefault(nodeId, List.of()));
   }
 
   /**
@@ -167,15 +203,12 @@ public class TopologyGraph {
         .toList();
   }
 
-  /** Drops every edge whose source or target node is absent and rebuilds the adjacency map. */
+  /** Drops every edge whose source or target node is absent and rebuilds both adjacency maps. */
   private void removeDanglingEdges() {
     edges.removeIf(e -> !nodes.containsKey(e.sourceId()) || !nodes.containsKey(e.targetId()));
     adjacency.clear();
-    for (TopologyEdge edge : edges) {
-      adjacency
-          .computeIfAbsent(edge.sourceId(), k -> new ArrayList<>())
-          .add(edge.targetId());
-    }
+    flowAdjacency.clear();
+    edges.forEach(this::indexEdge);
   }
 
   /**

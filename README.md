@@ -44,10 +44,11 @@ What you will see:
 - the Acme Shop graph: 18 topics (two of them Kafka Streams internal topics), 7 consumer groups,
   1 Kafka Streams app, 9 services;
 - **search** — type `payment` to see every node and edge touching payments;
-- **trace** — pick `orders.order.created` to list every consumer it reaches;
+- **trace** — pick `orders.order.created` to follow it through every service and the topics
+  those services produce in turn: 25 paths, the longest 14 hops deep;
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
 
-![Tracing orders.order.created: the five downstream paths are highlighted in the graph and listed in the side panel](docs/images/topology-explorer-trace.png)
+![Tracing orders.order.created: the downstream paths are highlighted in the graph and listed in the side panel](docs/images/topology-explorer-trace.png)
 
 Developer loop (broker in Docker, app from Maven, Java 21+):
 
@@ -106,7 +107,7 @@ Kafka broker (AdminClient)
 |----------|-------------|
 | `GET /api/topology` | Full cached graph as JSON |
 | `GET /api/topology/search?q=<text>` | Nodes whose name contains `text`, plus neighbours |
-| `GET /api/topology/trace?topic=<name>` | All paths from a topic to every reachable leaf |
+| `GET /api/topology/trace?topic=<name>` | All data-flow paths from a topic: topic → group → owning service → produced topic → … |
 | `GET /api/topology/export?format=mermaid\|dot\|json` | Graph export |
 | `GET /api/topology/refresh` | Force an immediate re-discovery |
 | `GET /api/topology/applications` | Enrichment summary from the last refresh |

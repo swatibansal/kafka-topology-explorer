@@ -308,4 +308,43 @@ class TopologyGraphTest {
     assertThat(removed).isEmpty();
     assertThat(graph.getNodes()).containsKey(normalTopic.id());
   }
+
+  @Test
+  void downstream_followsConsumesAndProducesForwardAndDeploysInReverse() {
+    var graph = new TopologyGraph();
+    var topicA = TopologyNode.forTopic("topic-a");
+    var groupB = TopologyNode.forConsumerGroup("group-b");
+    var appC = TopologyNode.forApplication("app-c", Map.of());
+    var topicD = TopologyNode.forTopic("topic-d");
+    graph.addNode(topicA);
+    graph.addNode(groupB);
+    graph.addNode(appC);
+    graph.addNode(topicD);
+    graph.addEdge(TopologyEdge.of(topicA.id(), groupB.id(), EdgeType.CONSUMES, "a→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), groupB.id(), EdgeType.DEPLOYS, "c→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), topicD.id(), EdgeType.PRODUCES, "c→d"));
+
+    assertThat(graph.downstream(topicA.id())).containsExactly(groupB.id());
+    assertThat(graph.downstream(groupB.id())).containsExactly(appC.id());
+    assertThat(graph.downstream(appC.id())).containsExactly(topicD.id());
+    assertThat(graph.downstream(topicD.id())).isEmpty();
+    // Structural adjacency is unchanged: DEPLOYS still leaves the application node.
+    assertThat(graph.neighbors(appC.id())).containsExactly(groupB.id(), topicD.id());
+    assertThat(graph.neighbors(groupB.id())).isEmpty();
+  }
+
+  @Test
+  void downstream_isRebuiltWhenOrphanPruningDropsEdges() {
+    var graph = new TopologyGraph();
+    var groupB = TopologyNode.forConsumerGroup("group-b");
+    var appC = TopologyNode.forApplication("app-c", Map.of());
+    graph.addNode(groupB);
+    graph.addNode(appC);
+    graph.addEdge(TopologyEdge.of(appC.id(), groupB.id(), EdgeType.DEPLOYS, "c→b"));
+    assertThat(graph.downstream(groupB.id())).containsExactly(appC.id());
+
+    graph.removeOrphanNodes(); // group-b consumes nothing → pruned, then app-c isolated → pruned
+
+    assertThat(graph.downstream(groupB.id())).isEmpty();
+  }
 }

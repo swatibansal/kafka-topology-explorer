@@ -152,6 +152,90 @@ class GraphTraversalServiceTest {
                     .containsExactly("topic-a", "streams-c", "topic-d", "group-e"));
   }
 
+  // ── application hops (DEPLOYS reversed, PRODUCES forward) ───────────────────
+
+  @Test
+  void trace_groupDeployedByApplication_continuesThroughApplicationToProducedTopic() {
+    // topicA → groupB ⇐DEPLOYS= appC → topicD → groupE
+    var graph = new TopologyGraph();
+    var topicA = TopologyNode.forTopic("topic-a");
+    var groupB = TopologyNode.forConsumerGroup("group-b");
+    var appC = TopologyNode.forApplication("app-c", java.util.Map.of());
+    var topicD = TopologyNode.forTopic("topic-d");
+    var groupE = TopologyNode.forConsumerGroup("group-e");
+    graph.addNode(topicA);
+    graph.addNode(groupB);
+    graph.addNode(appC);
+    graph.addNode(topicD);
+    graph.addNode(groupE);
+    graph.addEdge(TopologyEdge.of(topicA.id(), groupB.id(), EdgeType.CONSUMES, "a→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), groupB.id(), EdgeType.DEPLOYS, "c→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), topicD.id(), EdgeType.PRODUCES, "c→d"));
+    graph.addEdge(TopologyEdge.of(topicD.id(), groupE.id(), EdgeType.CONSUMES, "d→e"));
+
+    TraversalResult result = service.trace("topic-a", graph);
+
+    assertThat(result.pathCount()).isEqualTo(1);
+    assertThat(result.paths().get(0).nodes())
+        .extracting(TopologyNode::name)
+        .containsExactly("topic-a", "group-b", "app-c", "topic-d", "group-e");
+    assertThat(result.paths().get(0).hopCount()).isEqualTo(4);
+    assertThat(result.finalDestinations())
+        .extracting(TopologyNode::name)
+        .containsExactly("group-e");
+  }
+
+  @Test
+  void trace_applicationDeployingTwoGroups_doesNotCrossToSiblingGroup() {
+    // topicA → groupB ⇐DEPLOYS= appC =DEPLOYS⇒ groupX   (appC produces nothing)
+    var graph = new TopologyGraph();
+    var topicA = TopologyNode.forTopic("topic-a");
+    var groupB = TopologyNode.forConsumerGroup("group-b");
+    var appC = TopologyNode.forApplication("app-c", java.util.Map.of());
+    var groupX = TopologyNode.forConsumerGroup("group-x");
+    graph.addNode(topicA);
+    graph.addNode(groupB);
+    graph.addNode(appC);
+    graph.addNode(groupX);
+    graph.addEdge(TopologyEdge.of(topicA.id(), groupB.id(), EdgeType.CONSUMES, "a→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), groupB.id(), EdgeType.DEPLOYS, "c→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), groupX.id(), EdgeType.DEPLOYS, "c→x"));
+
+    TraversalResult result = service.trace("topic-a", graph);
+
+    assertThat(result.pathCount()).isEqualTo(1);
+    assertThat(result.paths().get(0).nodes())
+        .extracting(TopologyNode::name)
+        .containsExactly("topic-a", "group-b", "app-c");
+    assertThat(result.paths().get(0).cycleDetected()).isFalse();
+    assertThat(result.finalDestinations())
+        .extracting(TopologyNode::name)
+        .containsExactly("app-c");
+  }
+
+  @Test
+  void trace_applicationProducesToTopicItsOwnGroupConsumes_terminatesWithCycleFlag() {
+    // topicA → groupB ⇐DEPLOYS= appC → topicA
+    var graph = new TopologyGraph();
+    var topicA = TopologyNode.forTopic("topic-a");
+    var groupB = TopologyNode.forConsumerGroup("group-b");
+    var appC = TopologyNode.forApplication("app-c", java.util.Map.of());
+    graph.addNode(topicA);
+    graph.addNode(groupB);
+    graph.addNode(appC);
+    graph.addEdge(TopologyEdge.of(topicA.id(), groupB.id(), EdgeType.CONSUMES, "a→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), groupB.id(), EdgeType.DEPLOYS, "c→b"));
+    graph.addEdge(TopologyEdge.of(appC.id(), topicA.id(), EdgeType.PRODUCES, "c→a"));
+
+    TraversalResult result = service.trace("topic-a", graph);
+
+    assertThat(result.pathCount()).isEqualTo(1);
+    assertThat(result.paths().get(0).nodes())
+        .extracting(TopologyNode::name)
+        .containsExactly("topic-a", "group-b", "app-c");
+    assertThat(result.paths().get(0).cycleDetected()).isTrue();
+  }
+
   // ── cycle handling ───────────────────────────────────────────────────────────
 
   @Test

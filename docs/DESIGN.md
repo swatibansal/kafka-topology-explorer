@@ -24,6 +24,21 @@ no single picture of who publishes what and who depends on it.
    edgeless retry / dead-letter topics are removed. Edges that touch a removed node are dropped
    and pruning repeats until the graph is stable.
 
+## Tracing
+
+`GraphTraversalService` runs a depth-first search from the chosen topic over the *data-flow*
+view of the graph (`TopologyGraph.downstream`): `CONSUMES` and `PRODUCES` edges are followed in
+their stored direction, and `DEPLOYS` is followed in reverse, from a consumer group to the
+service that runs it. A trace therefore continues through each service to the topics it
+produces and on to their consumers, so `orders.order.created → payment-service-cg →
+payment-service → payments.payment.captured → shipping-service-cg → …` is one path. A service is
+never stepped forwards into the other groups it deploys, since no message travels that way. A
+path ends at a service with no produced topics, at a produced topic with no consumers, or at a
+group with no owning service. Nodes already on the current path are skipped, and a path whose
+every onward edge loops back is flagged `cycleDetected`. The structural view (`neighbors`) is
+unchanged and still drives the search sub-graph. `DemoTopologyTraceTest` rebuilds the demo graph
+from the seed files and pins the 25 paths that tracing `orders.order.created` yields.
+
 ## application.yml extraction heuristics
 
 `SpringAppYmlGroupIdExtractor` parses multi-document YAML, picks the document whose

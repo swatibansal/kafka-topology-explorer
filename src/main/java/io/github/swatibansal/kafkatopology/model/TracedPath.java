@@ -7,9 +7,9 @@ import java.util.List;
  * topology graph from a starting topic to a final destination.
  *
  * @param nodes ordered list of nodes from the starting topic to the destination; never empty
- * @param destination the last node in the path — the final consumer, Streams app, or the start
- *     topic itself if it has no outgoing edges
- * @param cycleDetected {@code true} when the path was terminated because all outgoing edges from
+ * @param destination the last node in the path — the final consumer group, Streams app or
+ *     application, or the start topic itself if nothing consumes it
+ * @param cycleDetected {@code true} when the path was terminated because all downstream edges from
  *     the terminal node led back to nodes already on the path, indicating a topology cycle
  */
 public record TracedPath(

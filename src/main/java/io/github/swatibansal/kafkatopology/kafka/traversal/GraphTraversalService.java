@@ -16,6 +16,15 @@ import org.springframework.stereotype.Service;
  * Traverses a {@link TopologyGraph} using depth-first search (DFS) to enumerate all paths from a
  * starting topic to every reachable leaf (final destination) node.
  *
+ * <h2>Direction of travel</h2>
+ *
+ * <p>The search follows the <em>data flow</em> exposed by {@link TopologyGraph#downstream}: from a
+ * topic to the consumer groups that read it, from a consumer group to the application that runs
+ * it (the {@code DEPLOYS} edge, taken in reverse), and from an application to the topics it
+ * produces. A chain such as {@code orders.created → order-service-cg → order-service →
+ * orders.validated → …} is therefore reported as one multi-hop path. Where no application is
+ * linked to a group, the group remains the leaf.
+ *
  * <h2>Algorithm</h2>
  *
  * <p>DFS with per-path cycle detection:
@@ -23,8 +32,8 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>A <em>path set</em> tracks the node IDs on the current DFS stack. Any edge pointing to a
  *       node already in this set is a back-edge (cycle) and is skipped.
- *   <li>A node is recorded as a <em>leaf</em> when it has no outgoing edges (true leaf) or when
- *       all its outgoing edges point back into the current path (cycle terminus).
+ *   <li>A node is recorded as a <em>leaf</em> when it has no downstream edges (true leaf) or when
+ *       all its downstream edges point back into the current path (cycle terminus).
  *   <li>The algorithm backtracks fully, so all paths through a diamond-shaped sub-graph (multiple
  *       routes converging on the same node) are enumerated independently.
  * </ul>
@@ -80,7 +89,7 @@ public class GraphTraversalService {
   }
 
   /**
-   * Recursive DFS step. Explores all outgoing edges from {@code nodeId}, skipping back-edges
+   * Recursive DFS step. Explores all downstream edges from {@code nodeId}, skipping back-edges
    * (cycle detection via {@code pathSet}). Records the current path when a leaf is reached.
    *
    * @param nodeId current node being visited
@@ -95,9 +104,9 @@ public class GraphTraversalService {
       Set<String> pathSet,
       TopologyGraph graph,
       List<TracedPath> results) {
-    List<String> neighbors = graph.neighbors(nodeId);
+    List<String> neighbors = graph.downstream(nodeId);
 
-    // True leaf: no outgoing edges — record the path immediately.
+    // True leaf: no downstream edges — record the path immediately.
     if (neighbors.isEmpty()) {
       TopologyNode destination = currentPath.get(currentPath.size() - 1);
       results.add(new TracedPath(List.copyOf(currentPath), destination, false));
@@ -128,7 +137,7 @@ public class GraphTraversalService {
       pathSet.remove(neighborId);
     }
 
-    // Cycle terminus: every outgoing edge was a back-edge — record path with flag set.
+    // Cycle terminus: every downstream edge was a back-edge — record path with flag set.
     if (allCyclic) {
       TopologyNode destination = currentPath.get(currentPath.size() - 1);
       results.add(new TracedPath(List.copyOf(currentPath), destination, true));
