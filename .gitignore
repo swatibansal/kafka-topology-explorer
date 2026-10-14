@@ -10,8 +10,8 @@ target/
 .project
 *.log
 
-# Local Claude Code permissions (may contain tokens)
-.claude/settings.local.json
+# Local AI-assistant workspace (settings may contain tokens)
+.claude/
 
 # Demo runtime state
 .env

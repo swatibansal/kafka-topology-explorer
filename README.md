@@ -84,6 +84,8 @@ Kafka broker (AdminClient)
   REST API + browser UI (port 8083)
 ```
 
+Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md).
+
 ### Node types
 
 | Type | Represents |
@@ -141,21 +143,99 @@ Every setting is an environment variable with a local-friendly default.
 `ENRICHMENT_ACTIVE_PROFILE` is the profile block read from *each discovered service's*
 `application.yml`; it is unrelated to the explorer's own Spring profiles.
 
-## Pointing it at your own services
+## From demo to a deployable unit for your cluster
 
-Create a directory with one sub-folder per service containing its `application.yml` (either at the
-top level or under `src/main/resources/`), set `ENRICHMENT_LOCAL_DIR` to it, and set
-`ENRICHMENT_ACTIVE_PROFILE` to the profile your deployments use. The extractor looks for:
+The demo wires three things together that are specific to every company: the Kafka cluster, the
+place service configuration lives, and the way deployments and configuration are managed. The
+explorer keeps each behind a seam so you can replace them one at a time.
 
-- consumer groups: any key containing `kafka` and `group` (e.g. `spring.kafka.consumer.group-id`)
-  and Kafka Streams `spring.kafka.streams.application-id`;
+| Concern | In the demo | In your environment |
+|---------|-------------|---------------------|
+| Broker | Compose `kafka`, `PLAINTEXT` | Your cluster over `SASL_SSL` with a read-only principal |
+| Service configuration | `demo/apps/*/application.yml` | Your code host, service catalog or deployment manifests |
+| Scope | Every topic | `KAFKA_TOPIC_FILTER` plus naming conventions |
+| Access | Open on `localhost:8083` | Behind your ingress and SSO |
+| Deployment | `docker compose up` | The image from the `Dockerfile` in your orchestrator |
+
+### 1. Connect it to your cluster
+
+The explorer only reads. It calls `listTopics`, `describeTopics`, `listOffsets`,
+`listConsumerGroups` and `listConsumerGroupOffsets`, so a principal with `Describe` on the
+cluster, on all topics and on all groups is enough. Set `KAFKA_BOOTSTRAP_SERVERS`,
+`KAFKA_SECURITY_PROTOCOL` and the `KAFKA_SASL_*` variables from your secret manager; never bake
+them into the image. Run one explorer per cluster or environment rather than pointing one
+instance at several.
+
+Use `KAFKA_TOPIC_FILTER` to scope the graph to the topics that matter: a domain prefix, an
+environment prefix, or a team's naming convention. Patterns are substrings applied to topic and
+consumer-group names. Keep Kafka Streams internal topics (`-changelog`, `-repartition`) inside the
+filter, because their presence is what classifies a group as a `STREAMS_APP`.
+
+### 2. Connect it to your code host
+
+`PRODUCES` and `DEPLOYS` edges come from each service's own configuration, so the explorer needs a
+way to read it. Two sources ship in the box:
+
+- **Local directory** (`ENRICHMENT_LOCAL_DIR`): one sub-folder per service with its
+  `application.yml`. Useful when a CI job or a sidecar checks the configuration out for you.
+- **GitHub** (`GITHUB_ENRICHMENT_ENABLED=true`, `GITHUB_ORG`, `GITHUB_REPOS`, `GITHUB_TOKEN`):
+  reads `src/main/resources/application.yml` or `application-<profile>.yml` from each named
+  repository through the Contents API. Use a fine-grained token or GitHub App installation with
+  read access to repository contents only, and list repositories explicitly rather than scanning
+  the organisation.
+
+For GitLab, Bitbucket, a monorepo, a service catalog such as Backstage, or Helm values and
+Kubernetes ConfigMaps, implement the one-method `ApplicationSource` interface and register it in
+`EnrichmentConfig`. If the configuration is still Spring YAML, reuse `AppYmlApplicationParser`.
+
+The extraction rules are heuristics that encode common Spring conventions, and they are the part
+most likely to need tuning to your house style. `SpringAppYmlGroupIdExtractor` reads the profile
+block named by `ENRICHMENT_ACTIVE_PROFILE` and looks for:
+
+- consumer groups: any key containing `kafka` and `group` (for example
+  `spring.kafka.consumer.group-id`) and Kafka Streams `spring.kafka.streams.application-id`;
 - produced topics: any key containing `kafka` and `topic`;
 - Spring `${VAR:default}` expressions (the default is used) and cross-document references such as
   `"${app.kafka.consumer.group-id-base}-cg"`.
 
-`demo/apps/` shows the common shapes; `src/main/resources/application.yml`,
-`application-<profile>.yml` and `.yaml` are also read. To use GitHub instead, set the `GITHUB_*`
-variables.
+If your group ids or topic names are injected from Helm values or environment variables rather
+than defaults in the YAML, point the source at the rendered configuration, or extend the
+extractor to read your manifests. `GET /api/topology/applications` lists every candidate that did
+not match a live node, which is the quickest way to see what the heuristics missed.
+
+### 3. Deploy it
+
+The `Dockerfile` produces a non-root, layered image with Java 21 included. The service is
+stateless: the topology lives in an in-memory cache rebuilt every `KAFKA_TOPOLOGY_REFRESH_MS`
+(60 seconds by default), so a single replica is sufficient and restarts are cheap. Wire liveness
+and readiness probes to `/mgmt/health/liveness` and `/mgmt/health/readiness`, and scrape metrics
+from `/mgmt/prometheus`. Memory is sized through `JAVA_TOOL_OPTIONS` (`-XX:MaxRAMPercentage=75.0`
+is set in the image).
+
+The application has no authentication of its own. Put it behind your ingress and SSO, and do not
+expose `/mgmt` or `GET /api/topology/refresh` publicly: the health endpoint shows broker
+connectivity details and the refresh endpoint triggers a full re-discovery on every call.
+
+### 4. Manage configuration per environment
+
+Every setting is an environment variable, so a Helm values file or Kustomize overlay per
+environment is the natural home for it. The values that usually differ per environment are:
+
+- `KAFKA_BOOTSTRAP_SERVERS` and the security settings;
+- `KAFKA_TOPIC_FILTER`, when environments share a cluster and are separated by naming;
+- `ENRICHMENT_ACTIVE_PROFILE`, which must name the profile block that *your services* use in that
+  environment (the `prod` block of each service's `application.yml` for the production cluster);
+- the repository list or configuration directory the enrichment source reads.
+
+Secrets (`KAFKA_SASL_PASSWORD`, `KAFKA_SASL_JAAS_CONFIG`, `GITHUB_TOKEN`) belong in your secret
+manager and are injected as environment variables at deploy time.
+
+### 5. Check the graph against reality
+
+`CONSUMES` edges are facts from the broker. `PRODUCES` and `DEPLOYS` edges are inferences from
+configuration and inherit any drift between what a service declares and what it does. After the
+first deployment, trace a handful of well-understood topics and compare the paths with what the
+owning teams expect, then adjust filters and extraction rules until they agree.
 
 ## Known limitations
 
@@ -164,14 +244,6 @@ variables.
 - Kafka Streams sink topics cannot be inferred from the broker; only source topics appear as
   `CONSUMES` edges.
 - Consumer groups that have never committed offsets have no edges and are dropped as orphans.
-
-## How this was built
-
-This tool was built with AI-assisted development: a short design spec, then an implementation
-plan executed task by task with tests written first. The conventions the assistant followed are
-in [`.claude/CLAUDE.md`](.claude/CLAUDE.md); the architecture and demo design are in
-[`docs/DESIGN.md`](docs/DESIGN.md). `scripts/check-redaction.sh` runs in CI to keep this repository
-free of anything environment-specific.
 
 ## License
 
