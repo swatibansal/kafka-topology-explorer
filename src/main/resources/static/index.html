@@ -507,6 +507,7 @@
       // Click node → highlight its neighbourhood
       cy.on('tap', 'node', e => {
         const node = e.target;
+        resetHighlight();
         cy.elements().addClass('faded');
         const hood = node.closedNeighborhood();
         hood.removeClass('faded').addClass('highlighted');
@@ -740,7 +741,7 @@
   }
 
   function resetHighlight() {
-    if (cy) cy.elements().removeClass('faded highlighted');
+    if (cy) cy.elements().removeClass('faded highlighted search-match');
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────
@@ -836,6 +837,7 @@
       if (cy) {
         const nodeIds = new Set();
         (data.paths || []).forEach(p => (p.nodes || []).forEach(n => nodeIds.add(n.id)));
+        resetHighlight();
         cy.elements().addClass('faded');
         cy.nodes().filter(n => nodeIds.has(n.id())).removeClass('faded').addClass('highlighted');
         cy.edges().filter(e =>
@@ -885,9 +887,11 @@
     container.innerHTML = html;
   }
 
-  function chip(node, clickable) {
+  // fullWidth: show the whole name (one chip per row) instead of truncating to the chip width.
+  function chip(node, clickable, fullWidth) {
     const onclick = clickable ? ' onclick="focusNode(' + escHtml(JSON.stringify(node.id)) + ')"' : '';
-    return '<span class="node-chip ' + escHtml(node.type) + '" title="' + escHtml(node.id) + '"' + onclick + '>'
+    const style = fullWidth ? ' style="max-width:none"' : '';
+    return '<span class="node-chip ' + escHtml(node.type) + '" title="' + escHtml(node.id) + '"' + style + onclick + '>'
       + escHtml(node.name) + '</span>';
   }
 
@@ -895,6 +899,7 @@
     if (!cy) return;
     const node = cy.nodes().filter(n => n.id() === nodeId);
     if (!node.length) return;
+    resetHighlight();
     cy.elements().addClass('faded');
     const hood = node.closedNeighborhood();
     hood.removeClass('faded').addClass('highlighted');
@@ -930,6 +935,7 @@
       const nodeEntries = Object.values(topo.nodes || {});
 
       if (nodeEntries.length === 0) {
+        resetHighlight();
         placeholder.innerHTML =
           '<div class="msg-info">No nodes matched <strong>' + escHtml(q) + '</strong>.</div>';
         return;
@@ -966,13 +972,13 @@
 
       matched.forEach(n => {
         html += '<div class="path-card" style="cursor:pointer" onclick="focusNode(' + escHtml(JSON.stringify(n.id)) + ')">'
-              + chip(n, false) + '</div>';
+              + chip(n, false, true) + '</div>';
       });
       if (neighbours.length) {
         html += '<div style="font-size:0.75rem;color:#aaa;margin-top:0.25rem;">Connected nodes</div>';
         neighbours.forEach(n => {
           html += '<div class="path-card" style="cursor:pointer;opacity:0.75" onclick="focusNode(' + escHtml(JSON.stringify(n.id)) + ')">'
-                + chip(n, false) + '</div>';
+                + chip(n, false, true) + '</div>';
         });
       }
 
@@ -996,7 +1002,6 @@
     const ph = document.getElementById('search-placeholder');
     ph.style.display = '';
     ph.innerHTML = 'Enter an application name above and click <strong>Search</strong> to find matching nodes.';
-    if (cy) cy.nodes().removeClass('search-match');
     resetHighlight();
   }
 
