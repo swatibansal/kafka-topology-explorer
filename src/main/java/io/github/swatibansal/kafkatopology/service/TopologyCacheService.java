@@ -24,8 +24,8 @@ import org.springframework.stereotype.Service;
  *       initial discovery. Failures are caught and logged — a missing broker does not prevent the
  *       service from starting; the cache starts empty and is retried on the next scheduled tick.
  *   <li>{@link #refresh()} is called by the Spring scheduler at the interval configured via
- *       {@code kafka-agent.cache.refresh-interval-ms} (default: 60 000 ms). It can also be
- *       invoked directly by the {@code GET /api/topology/refresh} endpoint.
+ *       {@code kafka-agent.cache.refresh-interval-ms} (default: 86 400 000 ms, i.e. once a
+ *       day). It can also be invoked directly by the {@code POST /api/topology/refresh} endpoint.
  * </ol>
  *
  * <h2>Enrichment</h2>
@@ -95,8 +95,8 @@ public class TopologyCacheService {
    * @throws IllegalStateException if broker communication fails
    */
   @Scheduled(
-      fixedDelayString = "${kafka-agent.cache.refresh-interval-ms:60000}",
-      initialDelayString = "${kafka-agent.cache.refresh-interval-ms:60000}")
+      fixedDelayString = "${kafka-agent.cache.refresh-interval-ms:86400000}",
+      initialDelayString = "${kafka-agent.cache.refresh-interval-ms:86400000}")
   public TopologyGraph refresh() {
     log.info("Refreshing Kafka topology cache");
     TopologyGraph graph = discoveryService.discover();

@@ -17,7 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   admin:
  *     request-timeout-ms: 30000
  *   cache:
- *     refresh-interval-ms: 60000
+ *     refresh-interval-ms: 86400000
  *   enrichment:
  *     active-profile: prod
  *     local-directory: /demo/apps

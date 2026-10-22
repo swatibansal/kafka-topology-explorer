@@ -136,7 +136,7 @@ Every setting is an environment variable with a local-friendly default.
 | `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` | *(blank)* | Credentials from which a JAAS string is built |
 | `KAFKA_TOPIC_FILTER` | *(blank = all)* | Comma-separated substrings a topic or consumer-group name must contain |
 | `KAFKA_EXCLUDE_NUMERIC_TOPICS` | `true` | Drop topics whose names are purely numeric |
-| `KAFKA_TOPOLOGY_REFRESH_MS` | `60000` | Background refresh interval |
+| `KAFKA_TOPOLOGY_REFRESH_MS` | `86400000` | Background refresh interval (default: once a day; use the Refresh button for on-demand) |
 | `KAFKA_ADMIN_REQUEST_TIMEOUT_MS` | `30000` | AdminClient per-request timeout (ms) |
 | `KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS` | `30000` | AdminClient overall API timeout (ms) |
 | `ENRICHMENT_ACTIVE_PROFILE` | `prod` | Spring profile block to read from each `application.yml` |
@@ -213,10 +213,10 @@ not match a live node, which is the quickest way to see what the heuristics miss
 
 The `Dockerfile` produces a non-root, layered image with Java 21 included. The service is
 stateless: the topology lives in an in-memory cache rebuilt every `KAFKA_TOPOLOGY_REFRESH_MS`
-(60 seconds by default), so a single replica is sufficient and restarts are cheap. Wire liveness
-and readiness probes to `/mgmt/health/liveness` and `/mgmt/health/readiness`, and scrape metrics
-from `/mgmt/prometheus`. Memory is sized through `JAVA_TOOL_OPTIONS` (`-XX:MaxRAMPercentage=75.0`
-is set in the image).
+(once a day by default, or on demand via the Refresh button), so a single replica is sufficient and
+restarts are cheap. Wire liveness and readiness probes to `/mgmt/health/liveness` and
+`/mgmt/health/readiness`, and scrape metrics from `/mgmt/prometheus`. Memory is sized through
+`JAVA_TOOL_OPTIONS` (`-XX:MaxRAMPercentage=75.0` is set in the image).
 
 The application has no authentication of its own. Put it behind your ingress and SSO, and do not
 expose `/mgmt` or `POST /api/topology/refresh` publicly: the health endpoint shows broker
