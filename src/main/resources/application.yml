@@ -28,8 +28,8 @@ kafka-agent:
     request-timeout-ms: ${KAFKA_ADMIN_REQUEST_TIMEOUT_MS:30000}
     default-api-timeout-ms: ${KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS:30000}
   cache:
-    # Delay between successive background topology refreshes (milliseconds).
-    refresh-interval-ms: ${KAFKA_TOPOLOGY_REFRESH_MS:60000}
+    # Delay between successive background topology refreshes (milliseconds). Default: 1 day.
+    refresh-interval-ms: ${KAFKA_TOPOLOGY_REFRESH_MS:86400000}
   discovery:
     # Topics whose names are purely numeric (auto-generated internal IDs) are always excluded.
     exclude-numeric-topics: ${KAFKA_EXCLUDE_NUMERIC_TOPICS:true}
