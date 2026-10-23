@@ -20,9 +20,12 @@ no single picture of who publishes what and who depends on it.
    candidate group ids and topic names extracted from its `application.yml`. Candidates matching
    live nodes become `DEPLOYS` (app → group) and `PRODUCES` (app → topic) edges. A topic the
    application's own group already consumes never becomes a `PRODUCES` edge.
-5. **Orphan removal** — groups with no `CONSUMES` edge, applications with no edges, and
-   edgeless retry / dead-letter topics are removed. Edges that touch a removed node are dropped
-   and pruning repeats until the graph is stable.
+5. **Orphan removal** — groups with no `CONSUMES` edge (`UNCONSUMED_GROUP`), applications with
+   no edges (`UNLINKED_APPLICATION`), and edgeless retry / dead-letter topics
+   (`UNUSED_RETRY_OR_DLT_TOPIC`) are removed. Edges that touch a removed node are dropped and
+   pruning repeats until the graph is stable. Every removed node is kept, with its reason and
+   its pre-pruning metadata, in an `OrphanReport` next to the cached graph and served by
+   `GET /api/topology/orphans`; the report is replaced on each refresh.
 
 ## Tracing
 
@@ -37,7 +40,18 @@ path ends at a service with no produced topics, at a produced topic with no cons
 group with no owning service. Nodes already on the current path are skipped, and a path whose
 every onward edge loops back is flagged `cycleDetected`. The structural view (`neighbors`) is
 unchanged and still drives the search sub-graph. `DemoTopologyTraceTest` rebuilds the demo graph
-from the seed files and pins the 25 paths that tracing `orders.order.created` yields.
+from the seed files and pins the 10 paths that tracing `orders.order.created` yields.
+
+Because the trace is structural, a service that consumes several topics and produces several
+topics links each of its inputs to each of its outputs. The demo data is arranged so this never
+produces nonsense: every service consumes exactly one business stage, and the two fan-in
+consumers (`notification-service`, `order-analytics`) map every input to the same kind of output.
+That is why stock release lives in its own `inventory-release-service` rather than in
+`inventory-service`: a single inventory service consuming both `orders.order.created` and
+`payments.payment.failed` would make every failed payment appear to lead to a reservation and a
+shipment, and every new order to a release. The walkthrough is a linear saga, reserve → charge →
+ship → deliver, with `fraud-detection-service` as an asynchronous veto on `payments.payment.requested`
+(approvals are silent, a decline is published as `payments.payment.failed`).
 
 ## application.yml extraction heuristics
 
@@ -57,30 +71,46 @@ Two sources feed the same parser: `LocalAppYmlSource` (a directory, used by the 
 
 ## Demo topology: Acme Shop
 
-Nine services, eighteen topics, eight groups. Seeded by `demo/seed.sh` using only the Kafka CLI:
+Twelve services, eighteen topics, ten groups, of which one service and one topic are planted as
+orphans. Seeded by `demo/seed.sh` using only the Kafka CLI:
 topics are created, a realistic number of JSON events (a few hundred to a few thousand, listed per
 topic in `demo/topics.txt`) is produced into each business topic, and committed
 offsets are created for each group with `kafka-consumer-groups.sh --reset-offsets`, which works
 for groups with no live members.
 
-| Service | Group | Produces |
-|---------|-------|----------|
+| Service | Group (consumes) | Produces |
+|---------|------------------|----------|
 | order-service | — | orders.order.{created,updated,cancelled} |
-| payment-service | payment-service-cg | payments.payment.{requested,captured,failed} |
-| inventory-service | inventory-service-cg | inventory.stock.{reserved,released} |
-| shipping-service | shipping-service-cg | shipping.shipment.{created,delivered}, notifications.email.requested |
-| notification-service | notification-service-cg | — |
-| search-indexer | search-indexer-cg | search.product.indexed |
+| inventory-service | inventory-service-cg (orders.order.created) | inventory.stock.reserved |
+| payment-service | payment-service-cg (inventory.stock.reserved) | payments.payment.{captured,failed,requested} |
+| fraud-detection-service | fraud-detection-cg (payments.payment.requested) | payments.payment.failed |
+| shipping-service | shipping-service-cg (payments.payment.captured) | shipping.shipment.created |
+| delivery-tracking-service | delivery-tracking-cg (shipping.shipment.created) | shipping.shipment.delivered |
+| inventory-release-service | inventory-release-cg (payments.payment.failed, orders.order.cancelled) | inventory.stock.released |
+| notification-service | notification-service-cg (created, cancelled, captured, failed, shipment created, delivered) | — |
+| search-indexer | search-indexer-cg (catalog.product.updated) | search.product.indexed |
 | catalog-service | — | catalog.product.updated |
-| fraud-detection-service | fraud-detection-cg | payments.payment.failed |
-| order-analytics (Streams) | order-analytics | analytics.order.totals |
-| (none) | dlt-replay-cg | — (replays the two `.DLT` topics; no owning service in the demo) |
+| order-analytics (Streams) | order-analytics (created, updated, captured) | analytics.order.totals |
+| (none) | dlt-replay-cg | — (replays `orders.order.created.DLT` and `payments.payment.requested.DLT`; no owning service in the demo) |
+| pricing-service | pricing-service-cg (does not exist) | pricing.price.updated (does not exist) |
 
-The `dlt-replay-cg` group keeps the two dead-letter topics out of orphan removal, which drops
-edgeless retry/DLT topics.
+The `dlt-replay-cg` group keeps two of the three dead-letter topics out of orphan removal. The
+third, `orders.order.updated.DLT`, is seeded with five messages and no consumer group, and
+`pricing-service` is a decommissioned service whose configuration survives in `demo/apps`. Both
+are pruned and show up in `GET /api/topology/orphans`:
 
-Expected graph: 35 nodes (18 topics, 7 groups, 1 Streams app, 9 applications) and 41 edges
-(19 CONSUMES, 7 DEPLOYS, 15 PRODUCES). `DemoAppsSmokeTest` pins the extraction side of this.
+| Orphan | Reason |
+|--------|--------|
+| `orders.order.updated.DLT` (topic) | `UNUSED_RETRY_OR_DLT_TOPIC` |
+| `pricing-service` (application) | `UNLINKED_APPLICATION`, metadata keeps `candidateGroupIds` and `candidateTopicNames` |
+
+The third rule, `UNCONSUMED_GROUP`, needs a group that exists on the broker without committed
+offsets on any graph topic. The Kafka CLI cannot create one (offsets are what makes an idle group
+exist), so it is exercised by unit tests rather than by the seed data.
+
+Expected graph after pruning: 38 nodes (17 topics, 9 groups, 1 Streams app, 11 applications) and
+42 edges (19 CONSUMES, 9 DEPLOYS, 14 PRODUCES). `DemoAppsSmokeTest` pins the extraction side of
+this and `DemoTopologyTraceTest` the graph, the orphans and the trace.
 
 ## Testing strategy
 

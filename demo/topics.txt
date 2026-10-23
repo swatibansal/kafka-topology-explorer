@@ -4,15 +4,17 @@ orders.order.created 3 1842
 orders.order.updated 3 963
 orders.order.cancelled 3 217
 orders.order.created.DLT 1 7
+# Dead-letter topic nobody replays: no group commits on it, so the explorer prunes it as an orphan
+# and GET /api/topology/orphans reports it.
+orders.order.updated.DLT 1 5
 payments.payment.requested 3 1795
 payments.payment.captured 3 1620
 payments.payment.failed 3 175
 payments.payment.requested.DLT 1 3
-inventory.stock.reserved 3 1611
-inventory.stock.released 3 388
+inventory.stock.reserved 3 1803
+inventory.stock.released 3 241
 shipping.shipment.created 3 1598
 shipping.shipment.delivered 3 1402
-notifications.email.requested 3 2960
 catalog.product.updated 3 540
 search.product.indexed 3 540
 analytics.order.totals 3 1188

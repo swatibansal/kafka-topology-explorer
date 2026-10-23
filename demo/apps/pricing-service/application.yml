@@ -1,0 +1,15 @@
+# Decommissioned service. Its configuration still lives in the repository but the broker has
+# neither the pricing-service-cg group nor the pricing.price.updated topic any more, so the
+# explorer finds nothing to link it to, prunes the node, and lists it under
+# GET /api/topology/orphans as an UNLINKED_APPLICATION.
+spring:
+  application:
+    name: pricing-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: pricing-service-cg
+app:
+  kafka:
+    topics:
+      price-updated: pricing.price.updated

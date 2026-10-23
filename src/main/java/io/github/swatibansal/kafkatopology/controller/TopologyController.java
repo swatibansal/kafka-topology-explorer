@@ -4,6 +4,7 @@ import io.github.swatibansal.kafkatopology.enrichment.model.EnrichmentResult;
 import io.github.swatibansal.kafkatopology.kafka.traversal.GraphTraversalService;
 import io.github.swatibansal.kafkatopology.model.ExportFormat;
 import io.github.swatibansal.kafkatopology.model.NodeType;
+import io.github.swatibansal.kafkatopology.model.OrphanReport;
 import io.github.swatibansal.kafkatopology.model.TopologyEdge;
 import io.github.swatibansal.kafkatopology.model.TopologyGraph;
 import io.github.swatibansal.kafkatopology.model.TopologyNode;
@@ -40,6 +41,8 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code POST /api/topology/refresh} — forces an immediate cache refresh
  *   <li>{@code GET /api/topology/applications} — application enrichment result from the last
  *       refresh
+ *   <li>{@code GET /api/topology/orphans} — nodes pruned from the graph during the last refresh,
+ *       with the reason for each
  * </ul>
  */
 @RestController
@@ -248,5 +251,22 @@ public class TopologyController {
   @GetMapping("/applications")
   public ResponseEntity<EnrichmentResult> getApplications() {
     return ResponseEntity.ok(cacheService.getLastEnrichmentResult());
+  }
+
+  /**
+   * Returns the nodes that were pruned as orphans during the most recent topology refresh. Each
+   * entry carries the node as it was before pruning (an application keeps its unmatched
+   * {@code candidateGroupIds} / {@code candidateTopicNames} metadata) and the rule that removed
+   * it: a consumer group with no committed offsets on any graph topic, an application whose
+   * configuration matched nothing on the broker, or an unused retry / dead-letter topic.
+   *
+   * <p>Returns an empty report with a {@code null} {@code refreshedAt} before the first
+   * successful refresh.
+   *
+   * @return {@code 200 OK} with the last {@link OrphanReport}
+   */
+  @GetMapping("/orphans")
+  public ResponseEntity<OrphanReport> getOrphans() {
+    return ResponseEntity.ok(cacheService.getLastOrphanReport());
   }
 }

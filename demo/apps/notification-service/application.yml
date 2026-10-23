@@ -8,7 +8,10 @@ spring:
 app:
   kafka:
     topics:
+      # Consumed topics: one customer message per step of the order lifecycle.
       order-created: orders.order.created
+      order-cancelled: orders.order.cancelled
+      payment-captured: payments.payment.captured
       payment-failed: payments.payment.failed
+      shipment-created: shipping.shipment.created
       shipment-delivered: shipping.shipment.delivered
-      email-requested: notifications.email.requested

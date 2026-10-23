@@ -9,5 +9,3 @@ app:
   kafka:
     topics:
       shipment-created: shipping.shipment.created
-      shipment-delivered: shipping.shipment.delivered
-      email-requested: notifications.email.requested

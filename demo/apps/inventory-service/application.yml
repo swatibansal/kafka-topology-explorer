@@ -9,7 +9,6 @@ app:
   kafka:
     topics:
       stock-reserved: inventory.stock.reserved
-      stock-released: inventory.stock.released
 ---
 spring:
   config:
@@ -22,4 +21,3 @@ app:
   kafka:
     topics:
       stock-reserved: inventory.stock.reserved
-      stock-released: inventory.stock.released

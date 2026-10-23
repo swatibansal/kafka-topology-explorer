@@ -2,9 +2,11 @@
 # Seeds a local Kafka broker with the Acme Shop demo topology.
 #
 # Idempotent: topics are created with --if-not-exists, messages are only produced into empty
-# topics, and committed offsets are (re)set for every group. Safe to run repeatedly.
-# Resetting offsets requires each group to have no active members, so do not point the seeder at
-# a cluster where those groups are live.
+# topics, and every group in groups.txt is deleted and re-created so it commits offsets on exactly
+# the topics listed there and nothing else. Safe to run repeatedly. Deleting and resetting groups
+# requires them to have no active members, so do not point the seeder at a cluster where those
+# groups are live. Topics removed from topics.txt are not deleted; start from an empty broker
+# (`docker compose down`) when the topic list shrinks.
 #
 # Runs inside the apache/kafka image (see docker-compose.yml) but also works on a host with the
 # Kafka CLI tools if KAFKA_BIN and KAFKA_BOOTSTRAP_SERVERS are set.
@@ -72,6 +74,10 @@ while read -r group topics; do
   group="${group%$'\r'}"
   topics="${topics%$'\r'}"
   is_comment_or_blank "$group" && continue
+  # Drop any offsets left over from an earlier groups.txt, otherwise the explorer would still
+  # see the group consuming topics it no longer lists.
+  "$BIN/kafka-consumer-groups.sh" --bootstrap-server "$BOOTSTRAP" --group "$group" \
+    --delete >/dev/null 2>&1 || true
   IFS=',' read -ra topic_list <<< "$topics"
   for t in "${topic_list[@]}"; do
     "$BIN/kafka-consumer-groups.sh" --bootstrap-server "$BOOTSTRAP" --group "$group" \

@@ -1,10 +1,21 @@
 # Acme Shop demo topology — consumer groups and the topics they commit offsets on.
 # Format: <group-id> <comma-separated topics>
-payment-service-cg orders.order.created,orders.order.cancelled
-inventory-service-cg orders.order.created,orders.order.cancelled,payments.payment.failed
-shipping-service-cg payments.payment.captured,inventory.stock.reserved
-notification-service-cg orders.order.created,payments.payment.failed,shipping.shipment.delivered,notifications.email.requested
+#
+# Every service consumes exactly one business stage. A trace is structural (a service links each
+# of its inputs to each of its outputs), so a service with two unrelated inputs would make a
+# cancellation look like it leads to a shipment. Fan-in consumers (notification, analytics) are
+# fine because every input maps to the same kind of output.
+#
+# Happy path:  order created → stock reserved → payment captured → shipment created → delivered
+# Failure:     payment failed (card declined, or vetoed by fraud review) → stock released
+# Every step is also consumed by notification-service.
+inventory-service-cg orders.order.created
+payment-service-cg inventory.stock.reserved
+fraud-detection-cg payments.payment.requested
+shipping-service-cg payments.payment.captured
+delivery-tracking-cg shipping.shipment.created
+inventory-release-cg payments.payment.failed,orders.order.cancelled
+notification-service-cg orders.order.created,orders.order.cancelled,payments.payment.captured,payments.payment.failed,shipping.shipment.created,shipping.shipment.delivered
 search-indexer-cg catalog.product.updated
-fraud-detection-cg payments.payment.requested,orders.order.created
 order-analytics orders.order.created,orders.order.updated,payments.payment.captured,order-analytics-KSTREAM-AGGREGATE-STATE-STORE-0000000003-repartition
 dlt-replay-cg orders.order.created.DLT,payments.payment.requested.DLT

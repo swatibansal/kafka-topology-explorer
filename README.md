@@ -39,21 +39,29 @@ Then open <http://localhost:8083/>. The first start builds the image (a few minu
 `apache/kafka:3.9.1`. The image build downloads Maven and every dependency inside Docker, so the
 first `docker compose up` needs internet access. The broker is ephemeral by design:
 `docker compose down` discards the topology and the next `docker compose up` re-seeds it in about
-a minute. If port 8083 or 19092 is taken on your machine, set `EXPLORER_PORT` or `KAFKA_HOST_PORT`
+a minute. Re-running the seeder on a broker that is still up re-creates every consumer group from
+`demo/groups.txt`, but it never deletes topics, so after editing `demo/topics.txt` start from
+`docker compose down`. If port 8083 or 19092 is taken on your machine, set `EXPLORER_PORT` or `KAFKA_HOST_PORT`
 in the environment or in a `.env` file next to `docker-compose.yml`.
 
 What you will see:
 
-- the Acme Shop graph: 18 topics (two of them Kafka Streams internal topics), 7 consumer groups,
-  1 Kafka Streams app, 9 services;
+- the Acme Shop graph: 17 topics (two of them Kafka Streams internal topics), 9 consumer groups,
+  1 Kafka Streams app, 11 services;
 - **search** — type `payment` to see every node and edge touching payments;
 - **hide internal topics** — tick the toolbar box to drop changelog, repartition, retry and
   dead-letter topics from the picture;
 - **trace** — pick `orders.order.created` to follow it through every service and the topics
-  those services produce in turn: 25 paths, the longest 14 hops deep;
+  those services produce in turn: 10 paths, the longest 14 hops deep. The happy path runs
+  order → stock reserved → payment captured → shipment created → delivered, with
+  notification-service listening at every step; the failure branch runs payment failed
+  (declined, or vetoed by fraud review) → notification and → stock released, and stops there;
+- **orphans** — `curl localhost:8083/api/topology/orphans` lists what the refresh pruned and why:
+  a dead-letter topic nobody replays and a decommissioned service whose `application.yml` still
+  names a group and a topic that no longer exist;
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
 
-![Tracing orders.order.created: 25 paths through the services and the topics they produce, highlighted in the graph and listed hop by hop in the side panel](docs/images/topology-explorer-trace.png)
+![Tracing orders.order.created through the services and the topics they produce, highlighted in the graph and listed hop by hop in the side panel](docs/images/topology-explorer-trace.png)
 
 Developer loop (broker in Docker, app from Maven, Java 21+):
 
@@ -118,6 +126,7 @@ Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md)
 | `GET /api/topology/export?format=mermaid\|dot\|json` | Graph export |
 | `POST /api/topology/refresh` | Force an immediate re-discovery |
 | `GET /api/topology/applications` | Enrichment summary from the last refresh |
+| `GET /api/topology/orphans` | Nodes pruned during the last refresh, each with the rule that removed it |
 | `GET /mgmt/health`, `GET /mgmt/prometheus` | Actuator health and metrics |
 
 `/mgmt/health` shows component details (broker connectivity, cache state) and is meant for local
@@ -250,6 +259,12 @@ owning teams expect, then adjust filters and extraction rules until they agree.
 - Kafka Streams sink topics cannot be inferred from the broker; only source topics appear as
   `CONSUMES` edges.
 - Consumer groups that have never committed offsets have no edges and are dropped as orphans.
+  Pruned nodes are not lost: `GET /api/topology/orphans` lists them with the reason.
+- A trace is structural. A service that consumes several topics and produces several topics
+  links every input to every output, because configuration does not say which input triggers
+  which output. Keep that in mind when a path looks like a failure leading to a success. The
+  demo sidesteps this by giving every service one business input; in a real estate, services
+  that consume unrelated topics will show such cross-links.
 
 ## License
 

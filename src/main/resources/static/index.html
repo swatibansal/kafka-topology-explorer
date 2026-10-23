@@ -458,6 +458,7 @@
     setState('⏳', 'Computing layout&hellip;');
 
     if (cy) { cy.destroy(); cy = null; }
+    traceLit = false; // a rebuilt graph carries no trace lighting
 
     // Build elements
     const elements = [];
@@ -504,20 +505,17 @@
 
       applyInternalFilter();
 
-      // Click node → highlight its neighbourhood
+      // Click node → highlight its neighbourhood (a lit trace stays lit underneath)
       cy.on('tap', 'node', e => {
         const node = e.target;
-        resetHighlight();
-        cy.elements().addClass('faded');
-        const hood = node.closedNeighborhood();
-        hood.removeClass('faded').addClass('highlighted');
+        highlightNeighbourhood(node);
         showNodeInfo(node);
       });
 
-      // Tap canvas background → reset
+      // Tap canvas background → drop the neighbourhood selection; keep the trace if one is lit
       cy.on('tap', e => {
         if (e.target === cy) {
-          resetHighlight();
+          clearNeighbourhood();
           hideNodeInfo();
         }
       });
@@ -684,6 +682,20 @@
         selector: 'edge.highlighted',
         style: { opacity: 1, width: 2.5 }
       },
+      // Trace lighting is a separate layer so node taps can add a neighbourhood without
+      // erasing the traced paths. Listed after .faded so it wins when both classes are set.
+      {
+        selector: 'node.trace-path',
+        style: {
+          opacity: 1,
+          'border-width': 2,
+          'border-color': '#FFD600'
+        }
+      },
+      {
+        selector: 'edge.trace-path',
+        style: { opacity: 1, width: 2.5 }
+      },
       {
         selector: 'node.search-match',
         style: {
@@ -740,8 +752,32 @@
     if (cy) cy.fit(undefined, 40);
   }
 
+  // True while a trace is lighting the canvas; cleared by resetHighlight().
+  let traceLit = false;
+
+  // Full reset: trace lighting, neighbourhood selection and search markers all go.
   function resetHighlight() {
-    if (cy) cy.elements().removeClass('faded highlighted search-match');
+    if (cy) cy.elements().removeClass('faded highlighted search-match trace-path');
+    traceLit = false;
+  }
+
+  // Light a node and its neighbours. Search markers and any earlier neighbourhood are dropped;
+  // a lit trace is kept, so the result is "the trace plus this node's connections".
+  function highlightNeighbourhood(node) {
+    cy.elements().removeClass('highlighted search-match');
+    cy.elements().not('.trace-path').addClass('faded');
+    node.closedNeighborhood().removeClass('faded').addClass('highlighted');
+  }
+
+  // Drop the neighbourhood selection only; restore the trace-only view if a trace is lit.
+  function clearNeighbourhood() {
+    if (!cy) return;
+    if (traceLit) {
+      cy.elements().removeClass('highlighted search-match');
+      cy.elements().not('.trace-path').addClass('faded');
+    } else {
+      resetHighlight();
+    }
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────
@@ -839,10 +875,11 @@
         (data.paths || []).forEach(p => (p.nodes || []).forEach(n => nodeIds.add(n.id)));
         resetHighlight();
         cy.elements().addClass('faded');
-        cy.nodes().filter(n => nodeIds.has(n.id())).removeClass('faded').addClass('highlighted');
+        cy.nodes().filter(n => nodeIds.has(n.id())).removeClass('faded').addClass('trace-path');
         cy.edges().filter(e =>
           nodeIds.has(e.source().id()) && nodeIds.has(e.target().id())
-        ).removeClass('faded').addClass('highlighted');
+        ).removeClass('faded').addClass('trace-path');
+        traceLit = true;
       }
     } catch (err) {
       placeholder.innerHTML = '<div class="msg-error">Request failed: ' + escHtml(err.message) + '</div>';
@@ -899,11 +936,8 @@
     if (!cy) return;
     const node = cy.nodes().filter(n => n.id() === nodeId);
     if (!node.length) return;
-    resetHighlight();
-    cy.elements().addClass('faded');
-    const hood = node.closedNeighborhood();
-    hood.removeClass('faded').addClass('highlighted');
-    cy.animate({ fit: { eles: hood, padding: 100 } }, { duration: 400 });
+    highlightNeighbourhood(node);
+    cy.animate({ fit: { eles: node.closedNeighborhood(), padding: 100 } }, { duration: 400 });
     showNodeInfo(node);
   }
 

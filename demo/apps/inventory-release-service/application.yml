@@ -1,0 +1,14 @@
+# Compensation consumer: frees a stock reservation when the payment fails or the order is
+# cancelled. Kept separate from inventory-service so a failed payment never appears to lead to a
+# reservation in a structural trace.
+spring:
+  application:
+    name: inventory-release-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: inventory-release-cg
+app:
+  kafka:
+    topics:
+      stock-released: inventory.stock.released
