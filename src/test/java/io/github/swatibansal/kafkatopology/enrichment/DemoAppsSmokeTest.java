@@ -26,28 +26,35 @@ class DemoAppsSmokeTest {
     Map<String, DiscoveredApplication> apps = source.fetchApplications().stream()
         .collect(Collectors.toMap(DiscoveredApplication::name, Function.identity()));
 
-    assertThat(apps).hasSize(9);
+    assertThat(apps).hasSize(12);
     assertThat(apps.get("order-service").candidateGroupIds()).isEmpty();
     assertThat(apps.get("order-service").candidateTopicNames()).containsExactly(
         "orders.order.created", "orders.order.updated", "orders.order.cancelled");
     assertThat(apps.get("payment-service").candidateGroupIds())
         .containsExactly("payment-service-cg");
     assertThat(apps.get("payment-service").candidateTopicNames()).containsExactly(
-        "payments.payment.requested", "payments.payment.captured", "payments.payment.failed");
+        "payments.payment.captured", "payments.payment.failed", "payments.payment.requested");
     assertThat(apps.get("inventory-service").candidateGroupIds())
         .containsExactly("inventory-service-cg");
     assertThat(apps.get("inventory-service").candidateTopicNames())
-        .containsExactly("inventory.stock.reserved", "inventory.stock.released");
+        .containsExactly("inventory.stock.reserved");
+    assertThat(apps.get("inventory-release-service").candidateGroupIds())
+        .containsExactly("inventory-release-cg");
+    assertThat(apps.get("inventory-release-service").candidateTopicNames())
+        .containsExactly("inventory.stock.released");
     assertThat(apps.get("shipping-service").candidateGroupIds())
         .containsExactly("shipping-service-cg");
-    assertThat(apps.get("shipping-service").candidateTopicNames()).containsExactly(
-        "shipping.shipment.created", "shipping.shipment.delivered",
-        "notifications.email.requested");
+    assertThat(apps.get("shipping-service").candidateTopicNames())
+        .containsExactly("shipping.shipment.created");
+    assertThat(apps.get("delivery-tracking-service").candidateGroupIds())
+        .containsExactly("delivery-tracking-cg");
+    assertThat(apps.get("delivery-tracking-service").candidateTopicNames())
+        .containsExactly("shipping.shipment.delivered");
     assertThat(apps.get("notification-service").candidateGroupIds())
         .containsExactly("notification-service-cg");
     assertThat(apps.get("notification-service").candidateTopicNames()).containsExactly(
-        "orders.order.created", "payments.payment.failed", "shipping.shipment.delivered",
-        "notifications.email.requested");
+        "orders.order.created", "orders.order.cancelled", "payments.payment.captured",
+        "payments.payment.failed", "shipping.shipment.created", "shipping.shipment.delivered");
     assertThat(apps.get("search-indexer").candidateGroupIds())
         .containsExactly("search-indexer-cg");
     assertThat(apps.get("search-indexer").candidateTopicNames())
@@ -63,5 +70,10 @@ class DemoAppsSmokeTest {
         .containsExactly("order-analytics");
     assertThat(apps.get("order-analytics").candidateTopicNames())
         .containsExactly("analytics.order.totals");
+    // Decommissioned service: its config survives, but nothing it names exists on the broker.
+    assertThat(apps.get("pricing-service").candidateGroupIds())
+        .containsExactly("pricing-service-cg");
+    assertThat(apps.get("pricing-service").candidateTopicNames())
+        .containsExactly("pricing.price.updated");
   }
 }

@@ -3,8 +3,9 @@ package io.github.swatibansal.kafkatopology.service;
 import io.github.swatibansal.kafkatopology.enrichment.ApplicationEnrichmentService;
 import io.github.swatibansal.kafkatopology.enrichment.model.EnrichmentResult;
 import io.github.swatibansal.kafkatopology.kafka.discovery.TopologyDiscoveryService;
+import io.github.swatibansal.kafkatopology.model.OrphanNode;
+import io.github.swatibansal.kafkatopology.model.OrphanReport;
 import io.github.swatibansal.kafkatopology.model.TopologyGraph;
-import io.github.swatibansal.kafkatopology.model.TopologyNode;
 import jakarta.annotation.PostConstruct;
 import java.time.Instant;
 import java.util.List;
@@ -34,6 +35,13 @@ import org.springframework.stereotype.Service;
  * to overlay application nodes and DEPLOYS / PRODUCES edges. Enrichment is purely additive and
  * best-effort — it never throws and never prevents the Kafka topology from being published.
  *
+ * <h2>Orphans</h2>
+ *
+ * <p>Nodes pruned by {@link TopologyGraph#removeOrphanNodes()} are not discarded silently: every
+ * refresh produces an {@link OrphanReport} that is kept next to the graph and served by
+ * {@code GET /api/topology/orphans}, so stale groups, unlinked services and forgotten dead-letter
+ * topics remain queryable after they have left the picture.
+ *
  * <h2>Thread safety</h2>
  *
  * <p>The cached graph and enrichment result are stored in {@link AtomicReference} /
@@ -52,6 +60,7 @@ public class TopologyCacheService {
       new AtomicReference<>(new TopologyGraph());
   private volatile Instant lastRefreshedAt;
   private volatile EnrichmentResult lastEnrichmentResult = EnrichmentResult.empty();
+  private volatile OrphanReport lastOrphanReport = OrphanReport.empty();
 
   /**
    * Constructs a {@code TopologyCacheService}.
@@ -102,15 +111,18 @@ public class TopologyCacheService {
     TopologyGraph graph = discoveryService.discover();
     lastEnrichmentResult = enrichmentService.enrich(graph);
 
-    List<TopologyNode> orphans = graph.removeOrphanNodes();
+    List<OrphanNode> orphans = graph.removeOrphanNodes();
     if (!orphans.isEmpty()) {
       log.info("Removed {} orphan node(s) from topology graph", orphans.size());
-      orphans.forEach(n ->
-          orphanLog.info("ORPHAN_NODE type={} id={} name={}", n.type(), n.id(), n.name()));
+      orphans.forEach(o ->
+          orphanLog.info("ORPHAN_NODE type={} id={} name={} reason={}",
+              o.node().type(), o.node().id(), o.node().name(), o.reason()));
     }
 
+    Instant refreshedAt = Instant.now();
     cachedGraph.set(graph);
-    lastRefreshedAt = Instant.now();
+    lastOrphanReport = OrphanReport.of(refreshedAt, orphans);
+    lastRefreshedAt = refreshedAt;
     log.info(
         "Topology cache refreshed — nodes: {}, edges: {}", graph.nodeCount(), graph.edgeCount());
     return graph;
@@ -143,5 +155,15 @@ public class TopologyCacheService {
    */
   public EnrichmentResult getLastEnrichmentResult() {
     return lastEnrichmentResult;
+  }
+
+  /**
+   * Returns the nodes pruned as orphans during the most recent refresh, with the rule that
+   * removed each one.
+   *
+   * @return orphan report; never {@code null}, empty before the first successful refresh
+   */
+  public OrphanReport getLastOrphanReport() {
+    return lastOrphanReport;
   }
 }

@@ -11,6 +11,10 @@ import static org.mockito.Mockito.verify;
 import io.github.swatibansal.kafkatopology.enrichment.ApplicationEnrichmentService;
 import io.github.swatibansal.kafkatopology.enrichment.model.EnrichmentResult;
 import io.github.swatibansal.kafkatopology.kafka.discovery.TopologyDiscoveryService;
+import io.github.swatibansal.kafkatopology.model.EdgeType;
+import io.github.swatibansal.kafkatopology.model.OrphanNode;
+import io.github.swatibansal.kafkatopology.model.OrphanReason;
+import io.github.swatibansal.kafkatopology.model.TopologyEdge;
 import io.github.swatibansal.kafkatopology.model.TopologyGraph;
 import io.github.swatibansal.kafkatopology.model.TopologyNode;
 import java.util.concurrent.CountDownLatch;
@@ -123,6 +127,56 @@ class TopologyCacheServiceTest {
 
     assertThat(cacheService.getLastEnrichmentResult().applicationsFound()).isEqualTo(2);
     assertThat(cacheService.getLastEnrichmentResult().applicationsLinked()).isEqualTo(1);
+  }
+
+  @Test
+  void getLastOrphanReport_beforeAnyRefresh_isEmpty() {
+    assertThat(cacheService.getLastOrphanReport().count()).isZero();
+    assertThat(cacheService.getLastOrphanReport().orphans()).isEmpty();
+    assertThat(cacheService.getLastOrphanReport().refreshedAt()).isNull();
+  }
+
+  @Test
+  void refresh_recordsPrunedOrphansWithReasons() {
+    var graph = new TopologyGraph();
+    var topic = TopologyNode.forTopic("orders.created");
+    var liveGroup = TopologyNode.forConsumerGroup("order-processor");
+    var deadGroup = TopologyNode.forConsumerGroup("never-committed-group");
+    var deadDlt = TopologyNode.forTopic("orders.created.DLT");
+    graph.addNode(topic);
+    graph.addNode(liveGroup);
+    graph.addNode(deadGroup);
+    graph.addNode(deadDlt);
+    graph.addEdge(TopologyEdge.of(topic.id(), liveGroup.id(), EdgeType.CONSUMES, "test"));
+    given(discoveryService.discover()).willReturn(graph);
+
+    cacheService.refresh();
+
+    var report = cacheService.getLastOrphanReport();
+    assertThat(report.count()).isEqualTo(2);
+    assertThat(report.refreshedAt()).isEqualTo(cacheService.getLastRefreshedAt());
+    assertThat(report.orphans()).extracting(OrphanNode::node)
+        .containsExactlyInAnyOrder(deadGroup, deadDlt);
+    assertThat(report.orphans()).extracting(OrphanNode::reason)
+        .containsExactlyInAnyOrder(
+            OrphanReason.UNCONSUMED_GROUP, OrphanReason.UNUSED_RETRY_OR_DLT_TOPIC);
+    // The published graph no longer holds the pruned nodes.
+    assertThat(cacheService.getTopology().getNodes())
+        .containsOnlyKeys(topic.id(), liveGroup.id());
+  }
+
+  @Test
+  void refresh_withNoOrphans_replacesPreviousReport() {
+    var withOrphan = new TopologyGraph();
+    withOrphan.addNode(TopologyNode.forConsumerGroup("lonely-group"));
+    given(discoveryService.discover()).willReturn(withOrphan, new TopologyGraph());
+
+    cacheService.refresh();
+    assertThat(cacheService.getLastOrphanReport().count()).isEqualTo(1);
+
+    cacheService.refresh();
+    assertThat(cacheService.getLastOrphanReport().count()).isZero();
+    assertThat(cacheService.getLastOrphanReport().refreshedAt()).isNotNull();
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────────

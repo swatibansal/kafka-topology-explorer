@@ -1,0 +1,12 @@
+# Polls the carrier for every created shipment and publishes the delivery confirmation.
+spring:
+  application:
+    name: delivery-tracking-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: delivery-tracking-cg
+app:
+  kafka:
+    topics:
+      shipment-delivered: shipping.shipment.delivered

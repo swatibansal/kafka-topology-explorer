@@ -111,9 +111,12 @@ class TopologyGraphTest {
     var group = TopologyNode.forConsumerGroup("lonely-group");
     graph.addNode(group);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactly(group);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(group);
+    assertThat(removed).extracting(OrphanNode::reason)
+        .containsExactly(OrphanReason.UNCONSUMED_GROUP);
+    assertThat(removed.get(0).description()).isNotBlank();
     assertThat(graph.getNodes()).doesNotContainKey(group.id());
   }
 
@@ -126,7 +129,7 @@ class TopologyGraphTest {
     graph.addNode(group);
     graph.addEdge(TopologyEdge.of(topic.id(), group.id(), EdgeType.CONSUMES, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
     assertThat(removed).isEmpty();
     assertThat(graph.getNodes()).containsKey(group.id());
@@ -140,9 +143,11 @@ class TopologyGraphTest {
     var app = TopologyNode.forApplication("orphan-app", Map.of());
     graph.addNode(app);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactly(app);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(app);
+    assertThat(removed).extracting(OrphanNode::reason)
+        .containsExactly(OrphanReason.UNLINKED_APPLICATION);
     assertThat(graph.getNodes()).doesNotContainKey(app.id());
   }
 
@@ -158,7 +163,7 @@ class TopologyGraphTest {
     graph.addEdge(TopologyEdge.of(topic.id(), group.id(), EdgeType.CONSUMES, "test"));
     graph.addEdge(TopologyEdge.of(app.id(), group.id(), EdgeType.DEPLOYS, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
     assertThat(removed).isEmpty();
     assertThat(graph.getNodes()).containsKey(app.id());
@@ -174,11 +179,13 @@ class TopologyGraphTest {
     graph.addNode(group);
     graph.addEdge(TopologyEdge.of(app.id(), group.id(), EdgeType.DEPLOYS, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
     // The group has no CONSUMES edge, so it goes first; its DEPLOYS edge is then dangling and is
     // dropped, which leaves the application isolated, so it goes too.
-    assertThat(removed).containsExactly(group, app);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(group, app);
+    assertThat(removed).extracting(OrphanNode::reason)
+        .containsExactly(OrphanReason.UNCONSUMED_GROUP, OrphanReason.UNLINKED_APPLICATION);
     assertThat(graph.getNodes()).isEmpty();
     assertThat(graph.getEdges()).isEmpty();
     assertThat(graph.neighbors(app.id())).isEmpty();
@@ -193,11 +200,11 @@ class TopologyGraphTest {
     graph.addNode(dltTopic);
     graph.addEdge(TopologyEdge.of(group.id(), dltTopic.id(), EdgeType.PRODUCES, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
     // The group has no CONSUMES edge, so it goes first; without its PRODUCES edge the DLT topic
     // is edge-less and goes in the second pass.
-    assertThat(removed).containsExactly(group, dltTopic);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(group, dltTopic);
     assertThat(graph.getNodes()).isEmpty();
     assertThat(graph.getEdges()).isEmpty();
   }
@@ -217,9 +224,9 @@ class TopologyGraphTest {
     graph.addEdge(TopologyEdge.of(app.id(), liveGroup.id(), EdgeType.DEPLOYS, "live"));
     graph.addEdge(TopologyEdge.of(app.id(), deadGroup.id(), EdgeType.DEPLOYS, "dead"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactly(deadGroup);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(deadGroup);
     assertThat(graph.getNodes()).containsKeys(topic.id(), app.id(), liveGroup.id());
     assertThat(graph.getEdges())
         .allMatch(
@@ -237,9 +244,9 @@ class TopologyGraphTest {
     graph.addNode(app);
     graph.addEdge(TopologyEdge.of(topic.id(), app.id(), EdgeType.CONSUMES, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).doesNotContain(app);
+    assertThat(removed).extracting(OrphanNode::node).doesNotContain(app);
     assertThat(graph.getNodes()).containsKey(app.id());
   }
 
@@ -251,9 +258,9 @@ class TopologyGraphTest {
     var retryTopic = TopologyNode.forTopic("orders.retry");
     graph.addNode(retryTopic);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactly(retryTopic);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(retryTopic);
     assertThat(graph.getNodes()).doesNotContainKey(retryTopic.id());
   }
 
@@ -263,9 +270,11 @@ class TopologyGraphTest {
     var dltTopic = TopologyNode.forTopic("orders.dlt");
     graph.addNode(dltTopic);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactly(dltTopic);
+    assertThat(removed).extracting(OrphanNode::node).containsExactly(dltTopic);
+    assertThat(removed).extracting(OrphanNode::reason)
+        .containsExactly(OrphanReason.UNUSED_RETRY_OR_DLT_TOPIC);
     assertThat(graph.getNodes()).doesNotContainKey(dltTopic.id());
   }
 
@@ -277,9 +286,10 @@ class TopologyGraphTest {
     graph.addNode(upperRetry);
     graph.addNode(upperDlt);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).containsExactlyInAnyOrder(upperRetry, upperDlt);
+    assertThat(removed).extracting(OrphanNode::node)
+        .containsExactlyInAnyOrder(upperRetry, upperDlt);
   }
 
   @Test
@@ -291,9 +301,9 @@ class TopologyGraphTest {
     graph.addNode(group);
     graph.addEdge(TopologyEdge.of(retryTopic.id(), group.id(), EdgeType.CONSUMES, "test"));
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
-    assertThat(removed).doesNotContain(retryTopic);
+    assertThat(removed).extracting(OrphanNode::node).doesNotContain(retryTopic);
     assertThat(graph.getNodes()).containsKey(retryTopic.id());
   }
 
@@ -303,7 +313,7 @@ class TopologyGraphTest {
     var normalTopic = TopologyNode.forTopic("orders.created");
     graph.addNode(normalTopic);
 
-    List<TopologyNode> removed = graph.removeOrphanNodes();
+    List<OrphanNode> removed = graph.removeOrphanNodes();
 
     assertThat(removed).isEmpty();
     assertThat(graph.getNodes()).containsKey(normalTopic.id());

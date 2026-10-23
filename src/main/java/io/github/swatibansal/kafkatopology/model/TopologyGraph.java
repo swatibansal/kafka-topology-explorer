@@ -164,16 +164,17 @@ public class TopologyGraph {
    * orphan consumer group, pruning repeats until no node matches any rule above. Afterwards every
    * edge returned by {@link #getEdges()} references two existing nodes.
    *
-   * <p>Removed nodes are returned so callers can log or audit them.
+   * <p>Removed nodes are returned with the rule that removed them so callers can log, audit or
+   * expose them; see {@link OrphanReport}.
    *
    * @return immutable list of the nodes removed, in removal order; empty when none
    */
-  public List<TopologyNode> removeOrphanNodes() {
-    List<TopologyNode> removed = new ArrayList<>();
+  public List<OrphanNode> removeOrphanNodes() {
+    List<OrphanNode> removed = new ArrayList<>();
     removeDanglingEdges();
-    List<TopologyNode> orphans = findOrphans();
+    List<OrphanNode> orphans = findOrphans();
     while (!orphans.isEmpty()) {
-      orphans.forEach(n -> nodes.remove(n.id()));
+      orphans.forEach(o -> nodes.remove(o.node().id()));
       removed.addAll(orphans);
       removeDanglingEdges();
       orphans = findOrphans();
@@ -183,11 +184,12 @@ public class TopologyGraph {
 
   /**
    * Returns the nodes that currently qualify as orphans under the rules documented on
-   * {@link #removeOrphanNodes()}, without modifying the graph.
+   * {@link #removeOrphanNodes()}, each paired with the matching rule, without modifying the
+   * graph.
    *
    * @return matching nodes; empty when none
    */
-  private List<TopologyNode> findOrphans() {
+  private List<OrphanNode> findOrphans() {
     Set<String> consumedGroupIds = new HashSet<>();
     Set<String> sourceIds = new HashSet<>();
     Set<String> targetIds = new HashSet<>();
@@ -198,9 +200,14 @@ public class TopologyGraph {
         consumedGroupIds.add(edge.targetId());
       }
     }
-    return nodes.values().stream()
-        .filter(n -> isOrphan(n, consumedGroupIds, sourceIds, targetIds))
-        .toList();
+    List<OrphanNode> orphans = new ArrayList<>();
+    for (TopologyNode n : nodes.values()) {
+      OrphanReason reason = orphanReason(n, consumedGroupIds, sourceIds, targetIds);
+      if (reason != null) {
+        orphans.add(OrphanNode.of(n, reason));
+      }
+    }
+    return orphans;
   }
 
   /** Drops every edge whose source or target node is absent and rebuilds both adjacency maps. */
@@ -212,28 +219,29 @@ public class TopologyGraph {
   }
 
   /**
-   * Returns {@code true} if the given node qualifies as an orphan under the pruning rules applied
-   * by {@link #removeOrphanNodes()}.
+   * Returns the pruning rule the given node matches under {@link #removeOrphanNodes()}, or
+   * {@code null} if the node should be kept.
    *
    * @param n node to test
    * @param consumedGroupIds IDs of nodes that are targets of a {@link EdgeType#CONSUMES} edge
    * @param sourceIds IDs of nodes that are sources of any edge
    * @param targetIds IDs of nodes that are targets of any edge
-   * @return {@code true} if the node should be removed
+   * @return matching reason, or {@code null} to keep the node
    */
-  private static boolean isOrphan(
+  private static OrphanReason orphanReason(
       TopologyNode n,
       Set<String> consumedGroupIds,
       Set<String> sourceIds,
       Set<String> targetIds) {
+    boolean edgeless = !sourceIds.contains(n.id()) && !targetIds.contains(n.id());
     return switch (n.type()) {
-      case CONSUMER_GROUP, STREAMS_APP -> !consumedGroupIds.contains(n.id());
-      case APPLICATION -> !sourceIds.contains(n.id()) && !targetIds.contains(n.id());
+      case CONSUMER_GROUP, STREAMS_APP ->
+          consumedGroupIds.contains(n.id()) ? null : OrphanReason.UNCONSUMED_GROUP;
+      case APPLICATION -> edgeless ? OrphanReason.UNLINKED_APPLICATION : null;
       case TOPIC -> {
         String nameLower = n.name().toLowerCase(Locale.ROOT);
-        yield (nameLower.contains("retry") || nameLower.contains("dlt"))
-            && !sourceIds.contains(n.id())
-            && !targetIds.contains(n.id());
+        boolean retryOrDlt = nameLower.contains("retry") || nameLower.contains("dlt");
+        yield retryOrDlt && edgeless ? OrphanReason.UNUSED_RETRY_OR_DLT_TOPIC : null;
       }
     };
   }

@@ -11,12 +11,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.github.swatibansal.kafkatopology.enrichment.model.EnrichmentResult;
 import io.github.swatibansal.kafkatopology.kafka.traversal.GraphTraversalService;
+import io.github.swatibansal.kafkatopology.model.OrphanNode;
+import io.github.swatibansal.kafkatopology.model.OrphanReason;
+import io.github.swatibansal.kafkatopology.model.OrphanReport;
 import io.github.swatibansal.kafkatopology.model.TopologyGraph;
 import io.github.swatibansal.kafkatopology.model.TopologyNode;
 import io.github.swatibansal.kafkatopology.model.TracedPath;
 import io.github.swatibansal.kafkatopology.model.TraversalResult;
 import io.github.swatibansal.kafkatopology.service.GraphOutputService;
 import io.github.swatibansal.kafkatopology.service.TopologyCacheService;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -254,6 +258,48 @@ class TopologyControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.applicationsFound").value(0))
         .andExpect(jsonPath("$.applicationsLinked").value(0));
+  }
+
+  // ── GET /api/topology/orphans ─────────────────────────────────────────────────
+
+  @Test
+  void getOrphans_returnsLastReportWithReasons() throws Exception {
+    var app = TopologyNode.forApplication(
+        "pricing-service", Map.of("candidateGroupIds", "pricing-service-cg"));
+    var dlt = TopologyNode.forTopic("orders.order.updated.DLT");
+    var report = new OrphanReport(
+        Instant.parse("2026-10-22T10:15:30Z"),
+        2,
+        List.of(
+            OrphanNode.of(app, OrphanReason.UNLINKED_APPLICATION),
+            OrphanNode.of(dlt, OrphanReason.UNUSED_RETRY_OR_DLT_TOPIC)));
+    given(cacheService.getLastOrphanReport()).willReturn(report);
+
+    mockMvc
+        .perform(get("/api/topology/orphans"))
+        .andExpect(status().isOk())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.refreshedAt").value("2026-10-22T10:15:30Z"))
+        .andExpect(jsonPath("$.count").value(2))
+        .andExpect(jsonPath("$.orphans[0].node.name").value("pricing-service"))
+        .andExpect(jsonPath("$.orphans[0].node.type").value("APPLICATION"))
+        .andExpect(jsonPath("$.orphans[0].node.metadata.candidateGroupIds")
+            .value("pricing-service-cg"))
+        .andExpect(jsonPath("$.orphans[0].reason").value("UNLINKED_APPLICATION"))
+        .andExpect(jsonPath("$.orphans[0].description").isNotEmpty())
+        .andExpect(jsonPath("$.orphans[1].node.id").value("topic:orders.order.updated.DLT"))
+        .andExpect(jsonPath("$.orphans[1].reason").value("UNUSED_RETRY_OR_DLT_TOPIC"));
+  }
+
+  @Test
+  void getOrphans_beforeFirstRefresh_returnsEmptyReport() throws Exception {
+    given(cacheService.getLastOrphanReport()).willReturn(OrphanReport.empty());
+
+    mockMvc
+        .perform(get("/api/topology/orphans"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.count").value(0))
+        .andExpect(jsonPath("$.orphans").isEmpty());
   }
 
   // ── GET /api/topology/search ──────────────────────────────────────────────────

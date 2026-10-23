@@ -8,9 +8,9 @@ app:
     consumer:
       group-id-base: payment-service
     topics:
-      payment-requested: payments.payment.requested
       payment-captured: payments.payment.captured
       payment-failed: payments.payment.failed
+      payment-requested: payments.payment.requested
 ---
 spring:
   config:
@@ -22,6 +22,6 @@ spring:
 app:
   kafka:
     topics:
-      payment-requested: ${PAYMENT_REQUESTED_TOPIC:payments.payment.requested}
       payment-captured: ${PAYMENT_CAPTURED_TOPIC:payments.payment.captured}
       payment-failed: ${PAYMENT_FAILED_TOPIC:payments.payment.failed}
+      payment-requested: ${PAYMENT_REQUESTED_TOPIC:payments.payment.requested}
