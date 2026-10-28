@@ -142,7 +142,7 @@ committed may be intentional.
 | `GET /api/topology/search?q=<text>` | Nodes whose name contains `text`, plus neighbours |
 | `GET /api/topology/trace?topic=<name>` | All data-flow paths from a topic: topic → group → owning service → produced topic → … |
 | `GET /api/topology/export?format=mermaid\|dot\|json` | Graph export |
-| `POST /api/topology/refresh` | Force an immediate re-discovery |
+| `POST /api/topology/refresh` | Force an immediate re-discovery (returns the refreshed graph; `GET` answers `405`) |
 | `GET /api/topology/applications` | Enrichment summary from the last refresh |
 | `GET /api/topology/orphans` | Nodes pruned from the last graph build, each with a reason code and description. Read-only; the explorer never deletes anything on the broker |
 | `GET /mgmt/health`, `GET /mgmt/prometheus` | Actuator health and metrics |
