@@ -56,9 +56,11 @@ What you will see:
   order → stock reserved → payment captured → shipment created → delivered, with
   notification-service listening at every step; the failure branch runs payment failed
   (declined, or vetoed by fraud review) → notification and → stock released, and stops there;
-- **orphans** — `curl localhost:8083/api/topology/orphans` lists what the refresh pruned and why:
-  a dead-letter topic nobody replays and a decommissioned service whose `application.yml` still
-  names a group and a topic that no longer exist;
+- **orphans** — the demo seeds two orphans on purpose so the endpoint has something to show.
+  `curl localhost:8083/api/topology/orphans` returns `count: 2`: `orders.order.updated.DLT`, a
+  dead-letter topic nobody replays (`UNUSED_RETRY_OR_DLT_TOPIC`), and `pricing-service`, a
+  decommissioned service whose `application.yml` still names a group and a topic that no longer
+  exist (`UNLINKED_APPLICATION`);
 - **export** — the same graph as Mermaid, Graphviz DOT, or JSON.
 
 ![Tracing orders.order.created through the services and the topics they produce, highlighted in the graph and listed hop by hop in the side panel](docs/images/topology-explorer-trace.png)
@@ -116,6 +118,22 @@ Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md)
 | `DEPLOYS` | Application owns a consumer group or Streams app | `application.yml` group id |
 | `PRODUCES` | Application writes to a topic | `application.yml` topic names |
 
+## Orphans
+
+A node with no edges is pruned from the graph after each refresh. Pruning removes it from the
+picture, never from Kafka: the explorer only reads from the broker and never deletes a topic or a
+group. Every pruned node is kept, with the rule that removed it, and served by
+`GET /api/topology/orphans` until the next refresh replaces the report.
+
+| Reason | Applies to | Meaning |
+|--------|------------|---------|
+| `UNCONSUMED_GROUP` | `CONSUMER_GROUP`, `STREAMS_APP` | The broker knows the group, but it has no committed offsets on any topic in the graph (never committed, or only on filtered-out topics) |
+| `UNLINKED_APPLICATION` | `APPLICATION` | None of the group ids or topic names in the service's configuration matched a live node; the unmatched candidates stay in the node's metadata |
+| `UNUSED_RETRY_OR_DLT_TOPIC` | `TOPIC` | A topic whose name contains `retry` or `dlt` that no group consumes and no known service produces into |
+
+Orphans are candidates for a human to review. A quiet dead-letter topic or a group that has never
+committed may be intentional.
+
 ## REST API
 
 | Endpoint | Description |
@@ -126,7 +144,7 @@ Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md)
 | `GET /api/topology/export?format=mermaid\|dot\|json` | Graph export |
 | `POST /api/topology/refresh` | Force an immediate re-discovery |
 | `GET /api/topology/applications` | Enrichment summary from the last refresh |
-| `GET /api/topology/orphans` | Nodes pruned during the last refresh, each with the rule that removed it |
+| `GET /api/topology/orphans` | Nodes pruned from the last graph build, each with a reason code and description. Read-only; the explorer never deletes anything on the broker |
 | `GET /mgmt/health`, `GET /mgmt/prometheus` | Actuator health and metrics |
 
 `/mgmt/health` shows component details (broker connectivity, cache state) and is meant for local
@@ -258,8 +276,8 @@ owning teams expect, then adjust filters and extraction rules until they agree.
   from live metadata.
 - Kafka Streams sink topics cannot be inferred from the broker; only source topics appear as
   `CONSUMES` edges.
-- Consumer groups that have never committed offsets have no edges and are dropped as orphans.
-  Pruned nodes are not lost: `GET /api/topology/orphans` lists them with the reason.
+- Consumer groups that have never committed offsets have no edges; they are pruned from the graph
+  and listed at `GET /api/topology/orphans` with reason `UNCONSUMED_GROUP`.
 - A trace is structural. A service that consumes several topics and produces several topics
   links every input to every output, because configuration does not say which input triggers
   which output. Keep that in mind when a path looks like a failure leading to a success. The
