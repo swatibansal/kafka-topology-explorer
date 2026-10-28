@@ -44,6 +44,9 @@ a minute. Re-running the seeder on a broker that is still up re-creates every co
 `docker compose down`. If port 8083 or 19092 is taken on your machine, set `EXPLORER_PORT` or `KAFKA_HOST_PORT`
 in the environment or in a `.env` file next to `docker-compose.yml`.
 
+The demo refreshes once a day; the broker is static. Press **Refresh Topology** or call
+`POST /api/topology/refresh` to re-discover on demand.
+
 What you will see:
 
 - the Acme Shop graph: 38 nodes and 42 edges. The nodes are 17 topics (that count includes the
@@ -167,7 +170,7 @@ Every setting is an environment variable with a local-friendly default.
 | `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` | *(blank)* | Credentials from which a JAAS string is built |
 | `KAFKA_TOPIC_FILTER` | *(blank = all)* | Comma-separated substrings a topic or consumer-group name must contain |
 | `KAFKA_EXCLUDE_NUMERIC_TOPICS` | `true` | Drop topics whose names are purely numeric |
-| `KAFKA_TOPOLOGY_REFRESH_MS` | `86400000` | Background refresh interval (default: once a day; use the Refresh button for on-demand) |
+| `KAFKA_TOPOLOGY_REFRESH_MS` | `86400000` | Background refresh interval. The application default is 24 h and the demo's `docker-compose.yml` sets the same value explicitly, because the seeded topology never changes; use the Refresh button or `POST /api/topology/refresh` to force one |
 | `KAFKA_ADMIN_REQUEST_TIMEOUT_MS` | `30000` | AdminClient per-request timeout (ms) |
 | `KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS` | `30000` | AdminClient overall API timeout (ms) |
 | `ENRICHMENT_ACTIVE_PROFILE` | `prod` | Spring profile block to read from each `application.yml` |
