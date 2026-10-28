@@ -119,6 +119,10 @@ Architecture notes and the demo design are in [`docs/DESIGN.md`](docs/DESIGN.md)
 
 ### Edge types
 
+`CONSUMES` edges are **observed** (committed offsets at the broker). `PRODUCES` and `DEPLOYS`
+edges are **inferred** from configuration and are drawn dashed in the UI. A topic without a
+`group-id` bound to it is *treated* as produced — a convention-dependent heuristic, not proof.
+
 | Type | Meaning | Source |
 |------|---------|--------|
 | `CONSUMES` | Group reads from a topic | broker committed offsets |
@@ -281,6 +285,8 @@ owning teams expect, then adjust filters and extraction rules until they agree.
 
 - Producers are invisible at the broker level, so `PRODUCES` edges come from configuration, not
   from live metadata.
+- A committed offset shows a group *has* read a topic, not that it is reading now. Group state and
+  last-commit age as a liveness signal are on the roadmap.
 - Kafka Streams sink topics cannot be inferred from the broker; only source topics appear as
   `CONSUMES` edges.
 - Consumer groups that have never committed offsets have no edges; they are pruned from the graph
