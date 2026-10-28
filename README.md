@@ -46,13 +46,17 @@ in the environment or in a `.env` file next to `docker-compose.yml`.
 
 What you will see:
 
-- the Acme Shop graph: 17 topics (two of them Kafka Streams internal topics), 9 consumer groups,
-  1 Kafka Streams app, 11 services;
+- the Acme Shop graph: 38 nodes and 42 edges. The nodes are 17 topics (that count includes the
+  2 Kafka Streams internal topics, which stay visible until you tick **Hide internal**),
+  9 consumer groups, 1 Kafka Streams app and 11 services; 14 of the edges are `PRODUCES` edges
+  inferred from configuration;
 - **search** — type `payment` to see every node and edge touching payments;
 - **hide internal topics** — tick the toolbar box to drop changelog, repartition, retry and
   dead-letter topics from the picture;
 - **trace** — pick `orders.order.created` to follow it through every service and the topics
-  those services produce in turn: 10 paths, the longest 14 hops deep. The happy path runs
+  those services produce in turn: 10 paths, between 2 and 14 hops deep, ending at 3 final
+  destinations (`notification-service`, `analytics.order.totals`, `inventory.stock.released`).
+  The happy path runs
   order → stock reserved → payment captured → shipment created → delivered, with
   notification-service listening at every step; the failure branch runs payment failed
   (declined, or vetoed by fraud review) → notification and → stock released, and stops there;
